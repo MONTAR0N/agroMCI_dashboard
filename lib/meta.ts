@@ -28,7 +28,7 @@ export async function getClientMeta(): Promise<ClientMeta> {
 // ─── Templates ───
 
 export async function listTemplates(meta: ClientMeta) {
-  const url = `${GRAPH_API}/${meta.waba_id}/message_templates?limit=100&fields=name,status,category,language,components,quality_score`
+  const url = `${GRAPH_API}/${meta.waba_id}/message_templates?limit=100&fields=id,name,status,category,language,components,quality_score`
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${meta.system_user_token}` },
     cache: 'no-store',
@@ -37,6 +37,34 @@ export async function listTemplates(meta: ClientMeta) {
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)
   return data.data || []
+}
+
+export async function getTemplate(meta: ClientMeta, templateId: string) {
+  const url = `${GRAPH_API}/${templateId}?fields=id,name,status,category,language,components`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${meta.system_user_token}` },
+    cache: 'no-store',
+  })
+
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data
+}
+
+export async function editTemplate(meta: ClientMeta, templateId: string, components: any[]) {
+  const url = `${GRAPH_API}/${templateId}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${meta.system_user_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ components }),
+  })
+
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data
 }
 
 export async function createTemplate(meta: ClientMeta, template: {
