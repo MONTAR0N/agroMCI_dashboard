@@ -15,7 +15,7 @@ export async function PUT(
     const name = (body.name || '').toString().trim()
     const extra = body.extra && typeof body.extra === 'object' ? body.extra : {}
 
-    // Limpiar teléfono: solo dígitos y +
+    // Limpiar teléfono: solo dígitos y + (hola)
     phone = phone.replace(/[^\d+]/g, '')
     if (phone && !phone.startsWith('+') && phone.length > 8) {
       phone = '+' + phone
