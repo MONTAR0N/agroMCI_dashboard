@@ -134,3 +134,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const { ids, all } = await request.json()
+
+    if (all) {
+      // Borrar todos los contactos del cliente
+      const result = await query(
+        'DELETE FROM contacts WHERE client_id = $1',
+        [session.clientId]
+      )
+      return NextResponse.json({ deleted: result.length >= 0 ? 'all' : 0 })
+    }
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Borrar seleccionados
+      await query(
+        'DELETE FROM contacts WHERE id = ANY($1::int[]) AND client_id = $2',
+        [ids, session.clientId]
+      )
+      return NextResponse.json({ deleted: ids.length })
+    }
+
+    return NextResponse.json({ error: 'Se requiere ids o all' }, { status: 400 })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}

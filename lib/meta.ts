@@ -99,3 +99,58 @@ export async function deleteTemplate(meta: ClientMeta, name: string) {
   if (data.error) throw new Error(data.error.message)
   return data
 }
+
+// ─── Mensajes ───
+
+export async function sendTemplateMessage(
+  meta: ClientMeta,
+  to: string,
+  templateName: string,
+  languageCode: string,
+  bodyParams?: string[],
+  headerParams?: string[]
+) {
+  const components: any[] = []
+
+  if (headerParams && headerParams.length > 0) {
+    components.push({
+      type: 'header',
+      parameters: headerParams.map(p => ({ type: 'text', text: p })),
+    })
+  }
+
+  if (bodyParams && bodyParams.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: bodyParams.map(p => ({ type: 'text', text: p })),
+    })
+  }
+
+  const payload: any = {
+    messaging_product: 'whatsapp',
+    to: to.replace(/[^\d]/g, ''),
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+    },
+  }
+
+  if (components.length > 0) {
+    payload.template.components = components
+  }
+
+  const url = `${GRAPH_API}/${meta.phone_number_id}/messages`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${meta.system_user_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data
+}
