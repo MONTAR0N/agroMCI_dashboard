@@ -5,7 +5,8 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // el Postgres autoalojado (EasyPanel) no tiene SSL habilitado
+  ssl: false,
 })
 
 export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
