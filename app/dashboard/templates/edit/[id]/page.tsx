@@ -28,9 +28,15 @@ export default function EditTemplatePage() {
   const [body, setBody] = useState('')
   const [footer, setFooter] = useState('')
   const [buttons, setButtons] = useState<ButtonConfig[]>([])
+  const [varExamples, setVarExamples] = useState<Record<string, string>>({})
   const [loadingTemplate, setLoadingTemplate] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const detectedVars = (body.match(/\{\{(\d+)\}\}/g) || [])
+    .map(v => v.replace(/[{}]/g, ''))
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .sort((a, b) => Number(a) - Number(b))
 
   useEffect(() => {
     async function load() {
@@ -101,10 +107,9 @@ export default function EditTemplatePage() {
     }
 
     if (body) {
-      const vars = body.match(/\{\{\d+\}\}/g)
       const comp: any = { type: 'BODY', text: body }
-      if (vars && vars.length > 0) {
-        comp.example = { body_text: [vars.map((_, i) => `ejemplo_${i + 1}`)] }
+      if (detectedVars.length > 0) {
+        comp.example = { body_text: [detectedVars.map(v => varExamples[v] || `ejemplo_${v}`)] }
       }
       components.push(comp)
     }
@@ -233,6 +238,26 @@ export default function EditTemplatePage() {
             <div className="bg-paja-50 rounded-lg p-4">
               <div className="text-xs text-tierra-400 mb-2">Vista previa</div>
               <div className="text-sm text-tierra-800 whitespace-pre-wrap">{renderBodyPreview()}</div>
+            </div>
+          )}
+
+          {detectedVars.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold text-tierra-500">Ejemplos de variables (para la revisión de Meta)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {detectedVars.map(v => (
+                  <div key={v}>
+                    <label className="block text-xs text-tierra-500 mb-1">{`{{${v}}}`}</label>
+                    <input
+                      type="text"
+                      value={varExamples[v] || ''}
+                      onChange={e => setVarExamples({ ...varExamples, [v]: e.target.value })}
+                      className="input-field text-sm"
+                      placeholder={`Ej: ${v === '1' ? 'Juan' : v === '2' ? '10:00' : `valor_${v}`}`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
