@@ -139,11 +139,18 @@ export default function NewTemplatePage() {
   // Preview del cuerpo con variables resaltadas
   function renderBodyPreview() {
     if (!body) return <span className="text-tierra-300">Escribe el cuerpo del mensaje...</span>
-    return body.split(/(\{\{\d+\}\})/).map((part, i) =>
-      /\{\{\d+\}\}/.test(part)
-        ? <span key={i} className="bg-trigo/20 text-trigo-700 px-1 rounded font-mono text-xs">{part}</span>
-        : <span key={i}>{part}</span>
-    )
+    return body.split(/(\{\{\d+\}\})/).map((part, i) => {
+      const match = part.match(/\{\{(\d+)\}\}/)
+      if (match) {
+        const varNum = match[1]
+        const example = varExamples[varNum]
+        if (example) {
+          return <span key={i} className="bg-verde/15 text-verde-700 px-1 rounded font-medium text-sm">{example}</span>
+        }
+        return <span key={i} className="bg-trigo/20 text-trigo-700 px-1 rounded font-mono text-xs">{part}</span>
+      }
+      return <span key={i}>{part}</span>
+    })
   }
 
   return (
