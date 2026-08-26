@@ -65,16 +65,52 @@ export default function ContactsPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const text = event.target?.result as string
-      parseCSV(text)
+    const isExcel = file.name.match(/\.xlsx?$/i)
+
+    if (isExcel) {
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        const data = event.target?.result
+        const XLSX = await import('xlsx')
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' })
+
+        if (rows.length === 0) return
+
+        const headers = Object.keys(rows[0])
+        const stringRows = rows.map(row => {
+          const obj: Record<string, string> = {}
+          headers.forEach(h => { obj[h] = String(row[h] ?? '') })
+          return obj
+        })
+
+        applyParsedData(headers, stringRows)
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const text = event.target?.result as string
+        parseCSV(text)
+      }
+      reader.readAsText(file)
     }
-    reader.readAsText(file)
+  }
+
+  function applyParsedData(headers: string[], rows: Record<string, string>[]) {
+    setCsvHeaders(headers)
+    setCsvData(rows)
+    setShowUpload(true)
+    setImportResult(null)
+
+    const phoneLike = headers.find(h => /tel[eé]fono|phone|celular|m[oó]vil|whatsapp|numero|número/i.test(h))
+    const nameLike = headers.find(h => /nombre|name|cliente|contacto/i.test(h))
+    if (phoneLike) setPhoneCol(phoneLike)
+    if (nameLike) setNameCol(nameLike)
   }
 
   function parseCSV(text: string) {
-    // Detectar separador
     const firstLine = text.split('\n')[0]
     const separator = firstLine.includes(';') ? ';' : ','
 
@@ -91,16 +127,7 @@ export default function ContactsPage() {
       return obj
     }).filter(row => Object.values(row).some(v => v))
 
-    setCsvHeaders(headers)
-    setCsvData(rows)
-    setShowUpload(true)
-    setImportResult(null)
-
-    // Auto-detectar columnas
-    const phoneLike = headers.find(h => /tel[eé]fono|phone|celular|m[oó]vil|whatsapp|numero|número/i.test(h))
-    const nameLike = headers.find(h => /nombre|name|cliente|contacto/i.test(h))
-    if (phoneLike) setPhoneCol(phoneLike)
-    if (nameLike) setNameCol(nameLike)
+    applyParsedData(headers, rows)
   }
 
   async function handleImport() {
@@ -146,7 +173,7 @@ export default function ContactsPage() {
       await fetch(`/api/contacts/${id}`, { method: 'DELETE' })
       setContacts(prev => prev.filter(c => c.id !== id))
       setPagination(prev => ({ ...prev, total: prev.total - 1 }))
-    } catch { }
+    } catch {}
   }
 
   function closeUpload() {
@@ -167,7 +194,7 @@ export default function ContactsPage() {
           <p className="text-sm text-tierra-400 mt-1">{pagination.total} contacto{pagination.total !== 1 ? 's' : ''}</p>
         </div>
         <div>
-          <input type="file" ref={fileRef} accept=".csv,.txt" onChange={handleFileSelect} className="hidden" />
+          <input type="file" ref={fileRef} accept=".csv,.txt,.xlsx,.xls" onChange={handleFileSelect} className="hidden" />
           <button onClick={() => fileRef.current?.click()} className="btn-primary">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
