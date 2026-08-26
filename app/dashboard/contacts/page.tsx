@@ -40,6 +40,14 @@ export default function ContactsPage() {
   const [deleting, setDeleting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [showForm, setShowForm] = useState(false)
+  const [editingContact, setEditingContact] = useState<Contact | null>(null)
+  const [formPhone, setFormPhone] = useState('')
+  const [formName, setFormName] = useState('')
+  const [formExtra, setFormExtra] = useState<{ key: string; value: string }[]>([])
+  const [formError, setFormError] = useState('')
+  const [savingForm, setSavingForm] = useState(false)
+
   async function loadContacts(page = 1) {
     setLoading(true)
     try {
@@ -61,6 +69,85 @@ export default function ContactsPage() {
   useEffect(() => { loadContacts() }, [])
 
   function handleSearch() { loadContacts(1) }
+
+  // ─── Manual create / edit ───
+
+  function openNewContact() {
+    setEditingContact(null)
+    setFormPhone('')
+    setFormName('')
+    setFormExtra([])
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function openEditContact(c: Contact) {
+    setEditingContact(c)
+    setFormPhone(c.phone)
+    setFormName(c.name || '')
+    setFormExtra(Object.entries(c.extra || {}).map(([key, value]) => ({ key, value: String(value) })))
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setEditingContact(null)
+    setFormPhone('')
+    setFormName('')
+    setFormExtra([])
+    setFormError('')
+  }
+
+  function addExtraField() {
+    setFormExtra(prev => [...prev, { key: '', value: '' }])
+  }
+
+  function updateExtraField(index: number, field: 'key' | 'value', value: string) {
+    setFormExtra(prev => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+  }
+
+  function removeExtraField(index: number) {
+    setFormExtra(prev => prev.filter((_, i) => i !== index))
+  }
+
+  async function handleSaveContact() {
+    const phone = formPhone.trim()
+    if (!phone) { setFormError('El teléfono es obligatorio'); return }
+
+    const extra: Record<string, string> = {}
+    for (const { key, value } of formExtra) {
+      if (key.trim()) extra[key.trim()] = value
+    }
+
+    setSavingForm(true)
+    setFormError('')
+    try {
+      if (editingContact) {
+        const res = await fetch(`/api/contacts/${editingContact.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, name: formName.trim(), extra }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+      } else {
+        const res = await fetch('/api/contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contacts: [{ phone, name: formName.trim(), ...extra }] }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+      }
+      closeForm()
+      loadContacts(pagination.page)
+    } catch (err: any) {
+      setFormError(err.message)
+    } finally {
+      setSavingForm(false)
+    }
+  }
 
   // ─── File handling ───
 
@@ -227,6 +314,12 @@ export default function ContactsPage() {
               Borrar todos
             </button>
           )}
+          <button onClick={openNewContact} className="btn-secondary">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Nuevo contacto
+          </button>
           <input type="file" ref={fileRef} accept=".csv,.txt,.xlsx,.xls" onChange={handleFileSelect} className="hidden" />
           <button onClick={() => fileRef.current?.click()} className="btn-primary">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -236,6 +329,67 @@ export default function ContactsPage() {
           </button>
         </div>
       </div>
+
+      {/* Contact form modal */}
+      {showForm && (
+        <div className="card mb-6 border-verde/30">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-tierra-900">
+              {editingContact ? 'Editar contacto' : 'Nuevo contacto'}
+            </h2>
+            <button onClick={closeForm} className="text-tierra-400 hover:text-tierra-700 text-sm">Cerrar</button>
+          </div>
+
+          {formError && (
+            <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">{formError}</div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-tierra-700 mb-1.5">Teléfono <span className="text-red-500">*</span></label>
+              <input type="text" value={formPhone} onChange={e => setFormPhone(e.target.value)}
+                className="input-field" placeholder="+56912345678" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-tierra-700 mb-1.5">Nombre</label>
+              <input type="text" value={formName} onChange={e => setFormName(e.target.value)}
+                className="input-field" placeholder="Nombre del contacto" />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-tierra-700">Datos extra</label>
+              <button onClick={addExtraField} type="button" className="text-xs text-verde hover:text-verde-700 font-medium">
+                + Agregar campo
+              </button>
+            </div>
+            {formExtra.length === 0 ? (
+              <p className="text-xs text-tierra-400">Sin campos extra.</p>
+            ) : (
+              <div className="space-y-2">
+                {formExtra.map((pair, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input type="text" value={pair.key} onChange={e => updateExtraField(i, 'key', e.target.value)}
+                      className="input-field" placeholder="Campo" />
+                    <input type="text" value={pair.value} onChange={e => updateExtraField(i, 'value', e.target.value)}
+                      className="input-field" placeholder="Valor" />
+                    <button onClick={() => removeExtraField(i)} type="button"
+                      className="text-tierra-400 hover:text-red-500 px-2">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={handleSaveContact} disabled={savingForm || !formPhone.trim()} className="btn-primary">
+              {savingForm ? 'Guardando...' : editingContact ? 'Guardar cambios' : 'Crear contacto'}
+            </button>
+            <button onClick={closeForm} className="btn-secondary">Cancelar</button>
+          </div>
+        </div>
+      )}
 
       {/* Upload modal */}
       {showUpload && (
@@ -359,6 +513,7 @@ export default function ContactsPage() {
                   <th className="text-left py-3 px-4 text-tierra-500 font-medium">Teléfono</th>
                   <th className="text-left py-3 px-4 text-tierra-500 font-medium">Nombre</th>
                   <th className="text-left py-3 px-4 text-tierra-500 font-medium hidden sm:table-cell">Datos extra</th>
+                  <th className="w-20 py-3 px-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -379,6 +534,11 @@ export default function ContactsPage() {
                           {Object.entries(c.extra).map(([k, v]) => `${k}: ${v}`).join(' · ')}
                         </span>
                       ) : <span className="text-tierra-300">—</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button onClick={() => openEditContact(c)} className="text-xs text-verde hover:text-verde-700 font-medium">
+                        Editar
+                      </button>
                     </td>
                   </tr>
                 ))}
