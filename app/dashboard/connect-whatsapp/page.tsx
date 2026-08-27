@@ -22,24 +22,34 @@ export default function ConnectWhatsAppPage() {
             setSdkReady(true)
         } else {
             window.fbAsyncInit = () => {
-                window.FB.init({ appId: process.env.NEXT_PUBLIC_META_APP_ID, xfbml: true, version: 'v21.0' })
+                window.FB.init({ appId: process.env.NEXT_PUBLIC_META_APP_ID, autoLogAppEvents: true, xfbml: true, version: 'v26.0' })
+                console.log('[connect-whatsapp] FB SDK inicializado')
                 setSdkReady(true)
             }
             const script = document.createElement('script')
-            script.src = 'https://connect.facebook.net/es_LA/sdk.js'
+            script.src = 'https://connect.facebook.net/en_US/sdk.js'
             script.async = true
+            script.defer = true
+            script.crossOrigin = 'anonymous'
             document.body.appendChild(script)
         }
 
         function handleMessage(event: MessageEvent) {
+            console.log('[connect-whatsapp] message recibido', { origin: event.origin, data: event.data })
             if (!event.origin.endsWith('facebook.com')) return
             try {
                 const data = JSON.parse(event.data)
-                if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
-                    setWaData({ wabaId: data.data.waba_id, phoneNumberId: data.data.phone_number_id })
+                console.log('[connect-whatsapp] message parseado', data)
+                if (data.type === 'WA_EMBEDDED_SIGNUP') {
+                    if (data.event === 'FINISH') {
+                        console.log('[connect-whatsapp] FINISH recibido', data.data)
+                        setWaData({ wabaId: data.data.waba_id, phoneNumberId: data.data.phone_number_id })
+                    } else {
+                        console.log('[connect-whatsapp] evento no-FINISH (cancelado o paso intermedio)', data.event, data.data)
+                    }
                 }
-            } catch {
-                // mensajes de Facebook que no son JSON (heartbeats, etc.) se ignoran
+            } catch (e) {
+                console.log('[connect-whatsapp] message no era JSON, se ignora', e)
             }
         }
         window.addEventListener('message', handleMessage)
@@ -48,6 +58,7 @@ export default function ConnectWhatsAppPage() {
 
     // Solo se completa la conexión cuando ya llegaron ambas partes: el code y los datos del WABA
     useEffect(() => {
+        console.log('[connect-whatsapp] estado actual', { code, waData })
         if (code && waData) finishConnection(code, waData)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code, waData])
@@ -57,6 +68,7 @@ export default function ConnectWhatsAppPage() {
         setConnecting(true)
         setError('')
         window.FB.login((response: any) => {
+            console.log('[connect-whatsapp] FB.login callback', response)
             if (response.authResponse?.code) {
                 setCode(response.authResponse.code)
             } else {
@@ -71,6 +83,7 @@ export default function ConnectWhatsAppPage() {
     }
 
     async function finishConnection(c: string, wa: { wabaId: string; phoneNumberId: string }) {
+        console.log('[connect-whatsapp] llamando a /api/meta/connect', { c, wa })
         try {
             const res = await fetch('/api/meta/connect', {
                 method: 'POST',
@@ -78,9 +91,11 @@ export default function ConnectWhatsAppPage() {
                 body: JSON.stringify({ code: c, wabaId: wa.wabaId, phoneNumberId: wa.phoneNumberId }),
             })
             const data = await res.json()
+            console.log('[connect-whatsapp] respuesta de /api/meta/connect', res.status, data)
             if (!res.ok) throw new Error(data.error)
             setSuccess(true)
         } catch (err: any) {
+            console.log('[connect-whatsapp] error en finishConnection', err)
             setError(err.message)
         } finally {
             setConnecting(false)
