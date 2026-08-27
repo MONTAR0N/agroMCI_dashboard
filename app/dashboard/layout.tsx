@@ -51,6 +51,15 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    href: '/dashboard/connect-whatsapp',
+    label: 'Conectar WhatsApp',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.63-5.63 14.756-5.63 20.386 0M12 20.25h.008v.008H12v-.008Z" />
+      </svg>
+    ),
+  },
 ]
 
 const ADMIN_NAV_ITEM = {

@@ -18,11 +18,15 @@ export async function getClientMeta(): Promise<ClientMeta> {
     [session.clientId]
   )
 
-  if (!client || !client.waba_id || !client.system_user_token) {
+  // Como Tech Provider usamos un único System User token para todos los clientes,
+  // salvo que el cliente tenga uno propio guardado (caso excepcional).
+  const token = client?.system_user_token || process.env.META_SYSTEM_USER_TOKEN
+
+  if (!client || !client.waba_id || !token) {
     throw new Error('Credenciales de Meta no configuradas para este cliente')
   }
 
-  return client
+  return { ...client, system_user_token: token }
 }
 
 // ─── Templates ───
