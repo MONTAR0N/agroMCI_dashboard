@@ -13,12 +13,31 @@ export default function DashboardHome() {
   const [stats, setStats] = useState<Stats | null>(null)
 
   useEffect(() => {
-    // Por ahora datos estáticos — Fase 2+ conectará con la API real
-    setStats({
-      templates: { approved: 0, pending: 0, rejected: 0 },
-      contacts: 0,
-      campaigns: { total: 0, active: 0 },
-    })
+    async function loadStats() {
+      const [contactsRes, campaignsRes, templatesRes] = await Promise.allSettled([
+        fetch('/api/contacts?page=1&limit=1').then(r => r.json()),
+        fetch('/api/campaigns').then(r => r.json()),
+        fetch('/api/templates').then(r => r.json()),
+      ])
+
+      const contacts = contactsRes.status === 'fulfilled' ? (contactsRes.value.pagination?.total ?? 0) : 0
+
+      const campaignsList = campaignsRes.status === 'fulfilled' ? (campaignsRes.value.campaigns ?? []) : []
+      const campaigns = {
+        total: campaignsList.length,
+        active: campaignsList.filter((c: any) => c.status === 'sending').length,
+      }
+
+      const templatesList = templatesRes.status === 'fulfilled' ? (templatesRes.value.templates ?? []) : []
+      const templates = {
+        approved: templatesList.filter((t: any) => t.status === 'APPROVED').length,
+        pending: templatesList.filter((t: any) => t.status === 'PENDING').length,
+        rejected: templatesList.filter((t: any) => t.status === 'REJECTED').length,
+      }
+
+      setStats({ templates, contacts, campaigns })
+    }
+    loadStats()
   }, [])
 
   return (
