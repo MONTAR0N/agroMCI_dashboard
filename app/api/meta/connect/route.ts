@@ -36,6 +36,23 @@ export async function POST(request: NextRequest) {
             headers: { Authorization: `Bearer ${tempToken}` },
         })
 
+        // Registra el número en Cloud API: sin este paso el número queda vinculado pero no puede enviar/recibir mensajes
+        const registerRes = await fetch(`${GRAPH_API}/${phoneNumberId}/register`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${tempToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                pin: Math.floor(100000 + Math.random() * 900000).toString(),
+            }),
+        })
+        const registerData = await registerRes.json()
+        if (registerData.error && !/already|registered/i.test(registerData.error.message || '')) {
+            throw new Error(`No se pudo registrar el número en Cloud API: ${registerData.error.message}`)
+        }
+
         // Solo guardamos waba_id/phone_number_id: el token de operación es el global (META_SYSTEM_USER_TOKEN)
         await query(
             `UPDATE clients SET waba_id = $1, phone_number_id = $2, meta_app_id = $3
