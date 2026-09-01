@@ -16,12 +16,12 @@ export async function POST(request: NextRequest) {
 
         const appId = process.env.NEXT_PUBLIC_META_APP_ID
         const appSecret = process.env.META_APP_SECRET
-        if (!appId || !appSecret) {
+        const systemUserId = process.env.META_SYSTEM_USER_ID
+        if (!appId || !appSecret || !systemUserId) {
             return NextResponse.json({ error: 'Meta no está configurado en el servidor' }, { status: 500 })
         }
 
-        // Intercambia el code del Embedded Signup por un access token: esto formaliza
-        // que el WABA quede compartido con tu Business Manager (Tech Provider)
+        // Token temporal solo para formalizar el handshake del Embedded Signup
         const tokenRes = await fetch(
             `${GRAPH_API}/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&code=${code}`
         )
@@ -29,6 +29,18 @@ export async function POST(request: NextRequest) {
         if (tokenData.error) throw new Error(tokenData.error.message)
 
         const tempToken = tokenData.access_token as string
+
+        // Asigna tu System User permanente como administrador de este WABA recién conectado
+        const assignRes = await fetch(`${GRAPH_API}/${wabaId}/assigned_users`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${tempToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ user: systemUserId, tasks: ['MANAGE'] }),
+        })
+        const assignData = await assignRes.json()
+        if (assignData.error) throw new Error(assignData.error.message)
 
         // Suscribe la app a los webhooks del WABA
         await fetch(`${GRAPH_API}/${wabaId}/subscribed_apps`, {
