@@ -36,20 +36,31 @@ export async function POST(request: NextRequest) {
             headers: { Authorization: `Bearer ${tempToken}` },
         })
 
-        // Registra el número en Cloud API: sin este paso el número queda vinculado pero no puede enviar/recibir mensajes
-        const registerRes = await fetch(`${GRAPH_API}/${phoneNumberId}/register`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${tempToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                pin: Math.floor(100000 + Math.random() * 900000).toString(),
-            }),
-        })
-        const registerData = await registerRes.json()
-        if (registerData.error && !/already|registered/i.test(registerData.error.message || '')) {
+        // Registra el número en Cloud API: sin este paso el número queda vinculado pero no puede enviar/recibir mensajes.
+        // Usamos un PIN fijo (no aleatorio) para que reconexiones futuras del mismo número no generen mismatch de PIN.
+        const registerPin = process.env.META_REGISTER_PIN || '204580'
+        async function registerPhoneNumber() {
+            const res = await fetch(`${GRAPH_API}/${phoneNumberId}/register`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${tempToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ messaging_product: 'whatsapp', pin: registerPin }),
+            })
+            return res.json()
+        }
+
+        let registerData = await registerPhoneNumber()
+        if (registerData.error?.code === 133005) {
+            // El número ya tenía un PIN distinto de una conexión previa: se da de baja y se registra de nuevo con nuestro PIN
+            await fetch(`${GRAPH_API}/${phoneNumberId}/deregister`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${tempToken}` },
+            })
+            registerData = await registerPhoneNumber()
+        }
+        if (registerData.error && !/already registered/i.test(registerData.error.message || '')) {
             throw new Error(`No se pudo registrar el número en Cloud API: ${registerData.error.message}`)
         }
 
