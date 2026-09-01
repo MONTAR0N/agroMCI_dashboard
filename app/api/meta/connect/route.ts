@@ -53,10 +53,14 @@ export async function POST(request: NextRequest) {
 
         let registerData = await registerPhoneNumber()
         if (registerData.error?.code === 133005) {
-            // El número ya tenía un PIN distinto de una conexión previa: se da de baja y se registra de nuevo con nuestro PIN
-            await fetch(`${GRAPH_API}/${phoneNumberId}/deregister`, {
+            // El número ya tenía un PIN distinto de una conexión previa: se fuerza el PIN nuevo (sin necesitar el actual)
+            await fetch(`${GRAPH_API}/${phoneNumberId}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${tempToken}` },
+                headers: {
+                    Authorization: `Bearer ${tempToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ pin: registerPin }),
             })
             registerData = await registerPhoneNumber()
         }
