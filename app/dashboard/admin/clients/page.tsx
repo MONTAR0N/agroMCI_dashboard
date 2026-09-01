@@ -10,12 +10,15 @@ interface Client {
     waba_id: string | null
     phone_number_id: string | null
     meta_app_id: string | null
+    chatwoot_account_id: string | null
+    chatwoot_inbox_id: string | null
     active: boolean
     created_at: string
 }
 
 const EMPTY_FORM = {
     name: '', slug: '', wabaId: '', phoneNumberId: '', systemUserToken: '', metaAppId: '',
+    chatwootAccountId: '', chatwootInboxId: '',
 }
 
 export default function AdminClientsPage() {
@@ -68,6 +71,7 @@ export default function AdminClientsPage() {
             name: c.name, slug: c.slug,
             wabaId: c.waba_id || '', phoneNumberId: c.phone_number_id || '',
             systemUserToken: '', metaAppId: c.meta_app_id || '',
+            chatwootAccountId: c.chatwoot_account_id || '', chatwootInboxId: c.chatwoot_inbox_id || '',
         })
         setShowForm(true)
     }
@@ -177,6 +181,16 @@ export default function AdminClientsPage() {
                             <label className="block text-sm font-medium text-tierra-700 mb-1.5">System User Token</label>
                             <input type="password" value={form.systemUserToken} onChange={e => setForm(f => ({ ...f, systemUserToken: e.target.value }))}
                                 className="input-field" placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Token del system user'} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-tierra-700 mb-1.5">Chatwoot Account ID</label>
+                            <input type="text" value={form.chatwootAccountId} onChange={e => setForm(f => ({ ...f, chatwootAccountId: e.target.value }))}
+                                className="input-field" placeholder="Cuenta del cliente en Chatwoot" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-tierra-700 mb-1.5">Chatwoot Inbox ID</label>
+                            <input type="text" value={form.chatwootInboxId} onChange={e => setForm(f => ({ ...f, chatwootInboxId: e.target.value }))}
+                                className="input-field" placeholder="Inbox de WhatsApp Cloud API" />
                         </div>
                     </div>
 

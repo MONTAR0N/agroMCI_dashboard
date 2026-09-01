@@ -18,10 +18,17 @@ CREATE TABLE IF NOT EXISTS clients (
   phone_number_id VARCHAR(100),                        -- Phone Number ID registrado
   system_user_token TEXT,                              -- Token del system user (encriptado en producción)
   meta_app_id   VARCHAR(100),                          -- App ID en Meta
+  chatwoot_account_id VARCHAR(50),                      -- Cuenta del cliente en tu instancia de Chatwoot
+  chatwoot_inbox_id   VARCHAR(50),                       -- Inbox de WhatsApp Cloud API en Chatwoot
   active        BOOLEAN DEFAULT true,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Columnas agregadas después de la creación inicial de la tabla (idempotente)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS chatwoot_account_id VARCHAR(50);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS chatwoot_inbox_id VARCHAR(50);
+ALTER TABLE clients DROP COLUMN IF EXISTS chatwoot_api_token;
 
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
@@ -50,8 +57,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   UNIQUE(client_id, phone)
 );
 
-CREATE INDEX idx_contacts_client ON contacts(client_id);
-CREATE INDEX idx_contacts_phone ON contacts(client_id, phone);
+CREATE INDEX IF NOT EXISTS idx_contacts_client ON contacts(client_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(client_id, phone);
 
 -- ============================================================
 -- FASE 4: Campañas y tracking de mensajes
@@ -75,8 +82,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   completed_at    TIMESTAMPTZ
 );
 
-CREATE INDEX idx_campaigns_client ON campaigns(client_id);
-CREATE INDEX idx_campaigns_status ON campaigns(client_id, status);
+CREATE INDEX IF NOT EXISTS idx_campaigns_client ON campaigns(client_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(client_id, status);
 
 CREATE TABLE IF NOT EXISTS campaign_messages (
   id            SERIAL PRIMARY KEY,
@@ -92,9 +99,9 @@ CREATE TABLE IF NOT EXISTS campaign_messages (
   read_at       TIMESTAMPTZ
 );
 
-CREATE INDEX idx_cm_campaign ON campaign_messages(campaign_id);
-CREATE INDEX idx_cm_status ON campaign_messages(campaign_id, status);
-CREATE INDEX idx_cm_wamid ON campaign_messages(wamid);
+CREATE INDEX IF NOT EXISTS idx_cm_campaign ON campaign_messages(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_cm_status ON campaign_messages(campaign_id, status);
+CREATE INDEX IF NOT EXISTS idx_cm_wamid ON campaign_messages(wamid);
 
 -- ============================================================
 -- Función para actualizar updated_at automáticamente
@@ -108,6 +115,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS clients_updated_at ON clients;
 CREATE TRIGGER clients_updated_at
   BEFORE UPDATE ON clients
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();

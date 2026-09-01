@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
-import { getClientMeta, sendTemplateMessage } from '@/lib/meta'
+import { getClientMeta, sendTemplateMessage, findApprovedTemplate, getWabaNamespace, renderTemplateBody } from '@/lib/meta'
+import { getClientChatwoot, findOrCreateContact, findOrCreateConversation, sendTemplateViaChatwoot } from '@/lib/chatwoot'
 
 const BATCH_SIZE = 10
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    // relaunch: 'failed' reintenta solo los fallidos, 'all' reenvía a todos los contactos de nuevo
+    let relaunch: 'failed' | 'all' | undefined
+    try {
+      const body = await request.json()
+      relaunch = body?.relaunch
+    } catch { }
 
     const meta = await getClientMeta()
 
@@ -27,10 +35,24 @@ export async function POST(
 
     if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
-    // Marcar como sending si es la primera vez
-    if (campaign.status === 'draft') {
+    if (relaunch === 'all') {
       await query(
-        "UPDATE campaigns SET status = 'sending', started_at = NOW() WHERE id = $1",
+        `UPDATE campaign_messages SET status = 'pending', wamid = NULL, error_message = NULL, sent_at = NULL
+         WHERE campaign_id = $1`,
+        [campaign.id]
+      )
+    } else if (relaunch === 'failed') {
+      await query(
+        `UPDATE campaign_messages SET status = 'pending', error_message = NULL
+         WHERE campaign_id = $1 AND status = 'failed'`,
+        [campaign.id]
+      )
+    }
+
+    // Marcar como sending si es la primera vez o si se está relanzando
+    if (campaign.status === 'draft' || relaunch) {
+      await query(
+        "UPDATE campaigns SET status = 'sending', started_at = NOW(), completed_at = NULL WHERE id = $1",
         [campaign.id]
       )
     }
@@ -62,6 +84,16 @@ export async function POST(
     let batchSent = 0
     let batchFailed = 0
 
+    // Si el cliente tiene Chatwoot configurado, se envía por ahí para que quede la conversación registrada
+    const chatwoot = await getClientChatwoot(session.clientId)
+    let templateComponents: any[] = []
+    let namespace = ''
+    if (chatwoot) {
+      const template = await findApprovedTemplate(meta, campaign.template_name, campaign.template_lang)
+      templateComponents = template?.components || []
+      namespace = await getWabaNamespace(meta)
+    }
+
     for (const msg of pendingMessages) {
       try {
         // Obtener datos del contacto para las variables
@@ -83,16 +115,25 @@ export async function POST(
           bodyParams.push(value || `{{${varNum}}}`)
         }
 
-        // Enviar mensaje
-        const result = await sendTemplateMessage(
-          meta,
-          msg.phone,
-          campaign.template_name,
-          campaign.template_lang,
-          bodyParams.length > 0 ? bodyParams : undefined
-        )
-
-        const wamid = result?.messages?.[0]?.id || null
+        let wamid: string | null = null
+        if (chatwoot) {
+          const cwContact = await findOrCreateContact(chatwoot, msg.phone, contact?.name)
+          const conversationId = await findOrCreateConversation(chatwoot, cwContact.id, msg.phone)
+          const content = renderTemplateBody(templateComponents, bodyParams)
+          await sendTemplateViaChatwoot(
+            chatwoot, conversationId, content,
+            campaign.template_name, namespace, campaign.template_lang, bodyParams
+          )
+        } else {
+          const result = await sendTemplateMessage(
+            meta,
+            msg.phone,
+            campaign.template_name,
+            campaign.template_lang,
+            bodyParams.length > 0 ? bodyParams : undefined
+          )
+          wamid = result?.messages?.[0]?.id || null
+        }
 
         await query(
           `UPDATE campaign_messages

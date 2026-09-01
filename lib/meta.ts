@@ -43,6 +43,34 @@ export async function listTemplates(meta: ClientMeta) {
   return data.data || []
 }
 
+// El namespace es el que Chatwoot necesita para enviar templates via su API (mismo para todo el WABA)
+export async function getWabaNamespace(meta: ClientMeta): Promise<string> {
+  const url = `${GRAPH_API}/${meta.waba_id}?fields=message_template_namespace`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${meta.system_user_token}` },
+    cache: 'no-store',
+  })
+
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data.message_template_namespace
+}
+
+export async function findApprovedTemplate(meta: ClientMeta, name: string, language: string) {
+  const templates = await listTemplates(meta)
+  return templates.find((t: any) => t.name === name && t.language === language) || null
+}
+
+// Reconstruye el texto final del body reemplazando {{n}} por los valores, para mostrarlo como "content" en Chatwoot
+export function renderTemplateBody(components: any[], bodyParams: string[]): string {
+  const body = components?.find((c: any) => c.type === 'BODY')
+  let text = body?.text || ''
+  bodyParams.forEach((value, i) => {
+    text = text.replace(`{{${i + 1}}}`, value)
+  })
+  return text
+}
+
 export async function getTemplate(meta: ClientMeta, templateId: string) {
   const url = `${GRAPH_API}/${templateId}?fields=id,name,status,category,language,components`
   const res = await fetch(url, {

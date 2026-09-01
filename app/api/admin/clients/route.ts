@@ -16,7 +16,7 @@ export async function GET() {
     if (session.role !== 'superadmin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
     const clients = await query(
-        `SELECT id, name, slug, waba_id, phone_number_id, meta_app_id, active, created_at
+        `SELECT id, name, slug, waba_id, phone_number_id, meta_app_id, chatwoot_account_id, chatwoot_inbox_id, active, created_at
      FROM clients ORDER BY created_at DESC`
     )
     return NextResponse.json({ clients })
@@ -39,12 +39,14 @@ export async function POST(request: NextRequest) {
         const phoneNumberId = (body.phoneNumberId || '').toString().trim() || null
         const systemUserToken = (body.systemUserToken || '').toString().trim() || null
         const metaAppId = (body.metaAppId || '').toString().trim() || null
+        const chatwootAccountId = (body.chatwootAccountId || '').toString().trim() || null
+        const chatwootInboxId = (body.chatwootInboxId || '').toString().trim() || null
 
         const created = await queryOne(
-            `INSERT INTO clients (name, slug, waba_id, phone_number_id, system_user_token, meta_app_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, slug, waba_id, phone_number_id, meta_app_id, active, created_at`,
-            [name, slug, wabaId, phoneNumberId, systemUserToken, metaAppId]
+            `INSERT INTO clients (name, slug, waba_id, phone_number_id, system_user_token, meta_app_id, chatwoot_account_id, chatwoot_inbox_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, name, slug, waba_id, phone_number_id, meta_app_id, chatwoot_account_id, chatwoot_inbox_id, active, created_at`,
+            [name, slug, wabaId, phoneNumberId, systemUserToken, metaAppId, chatwootAccountId, chatwootInboxId]
         )
         return NextResponse.json({ client: created })
     } catch (err: any) {

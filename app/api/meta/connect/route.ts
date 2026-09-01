@@ -36,6 +36,42 @@ export async function POST(request: NextRequest) {
             headers: { Authorization: `Bearer ${tempToken}` },
         })
 
+        // Registra el número en Cloud API: sin este paso el número queda vinculado pero no puede enviar/recibir mensajes.
+        // Usamos un PIN fijo (no aleatorio) para que reconexiones futuras del mismo número no generen mismatch de PIN.
+        const registerPin = process.env.META_REGISTER_PIN || '123456'
+        async function registerPhoneNumber() {
+            const res = await fetch(`${GRAPH_API}/${phoneNumberId}/register`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${tempToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ messaging_product: 'whatsapp', pin: registerPin }),
+            })
+            return res.json()
+        }
+
+        let registerData = await registerPhoneNumber()
+        if (registerData.error?.code === 133005) {
+            // El número ya tenía un PIN distinto de una conexión previa: se fuerza el PIN nuevo (sin necesitar el actual)
+            const setPinRes = await fetch(`${GRAPH_API}/${phoneNumberId}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${tempToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ pin: registerPin }),
+            })
+            const setPinData = await setPinRes.json()
+            if (setPinData.error) {
+                throw new Error(`No se pudo forzar el PIN (paso previo al registro): ${setPinData.error.message}`)
+            }
+            registerData = await registerPhoneNumber()
+        }
+        if (registerData.error && !/already registered/i.test(registerData.error.message || '')) {
+            throw new Error(`No se pudo registrar el número en Cloud API: ${registerData.error.message}`)
+        }
+
         // Solo guardamos waba_id/phone_number_id: el token de operación es el global (META_SYSTEM_USER_TOKEN)
         await query(
             `UPDATE clients SET waba_id = $1, phone_number_id = $2, meta_app_id = $3
