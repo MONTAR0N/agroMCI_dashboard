@@ -36,6 +36,27 @@ export async function POST(request: NextRequest) {
             headers: { Authorization: `Bearer ${tempToken}` },
         })
 
+        // Asigna tu System User (Tech Provider) como administrador del WABA recién compartido, usando
+        // TU PROPIO token (no el tempToken del cliente) porque asignar usuarios requiere autoridad
+        // de partner sobre el WABA ya compartido, no la del token temporal del cliente.
+        const systemUserId = process.env.META_SYSTEM_USER_ID
+        const systemUserToken = process.env.META_SYSTEM_USER_TOKEN
+        if (systemUserId && systemUserToken) {
+            const assignRes = await fetch(`${GRAPH_API}/${wabaId}/assigned_users`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${systemUserToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ user: systemUserId, tasks: ['MANAGE'] }),
+            })
+            const assignData = await assignRes.json()
+            // Si falla no bloqueamos la conexión: puede que ya estuviera asignado
+            if (assignData.error) {
+                console.error('[meta/connect] No se pudo asignar el System User al WABA:', assignData.error)
+            }
+        }
+
         // Registra el número en Cloud API: sin este paso el número queda vinculado pero no puede enviar/recibir mensajes.
         // Usamos un PIN fijo (no aleatorio) para que reconexiones futuras del mismo número no generen mismatch de PIN.
         const registerPin = process.env.META_REGISTER_PIN || '123456'
