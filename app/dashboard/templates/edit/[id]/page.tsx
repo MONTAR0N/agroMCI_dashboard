@@ -24,7 +24,9 @@ export default function EditTemplatePage() {
   const [status, setStatus] = useState('')
   const [headerFormat, setHeaderFormat] = useState<HeaderFormat>('NONE')
   const [headerText, setHeaderText] = useState('')
-  const [headerMediaUrl, setHeaderMediaUrl] = useState('')
+  const [headerMediaHandle, setHeaderMediaHandle] = useState('')
+  const [headerMediaFileName, setHeaderMediaFileName] = useState('')
+  const [uploadingMedia, setUploadingMedia] = useState(false)
   const [body, setBody] = useState('')
   const [footer, setFooter] = useState('')
   const [buttons, setButtons] = useState<ButtonConfig[]>([])
@@ -32,6 +34,28 @@ export default function EditTemplatePage() {
   const [loadingTemplate, setLoadingTemplate] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  async function handleHeaderFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingMedia(true)
+    setError('')
+    setHeaderMediaHandle('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/templates/upload-media', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setHeaderMediaHandle(data.handle)
+      setHeaderMediaFileName(file.name)
+    } catch (err: any) {
+      setError('Error al subir el archivo: ' + err.message)
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
 
   const detectedVars = (body.match(/\{\{(\d+)\}\}/g) || [])
     .map(v => v.replace(/[{}]/g, ''))
@@ -56,9 +80,8 @@ export default function EditTemplatePage() {
           if (comp.type === 'HEADER') {
             setHeaderFormat(comp.format || 'NONE')
             if (comp.format === 'TEXT') setHeaderText(comp.text || '')
-            else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format)) {
-              setHeaderMediaUrl(comp.example?.header_handle?.[0] || '')
-            }
+            // El header_handle que devuelve Meta al leer una plantilla es un link de descarga, no el handle
+            // de subida reutilizable: hay que pedir un archivo nuevo si se quiere mantener/editar el header de media.
           }
           if (comp.type === 'BODY') setBody(comp.text || '')
           if (comp.type === 'FOOTER') setFooter(comp.text || '')
@@ -98,12 +121,12 @@ export default function EditTemplatePage() {
 
     if (headerFormat === 'TEXT' && headerText) {
       components.push({ type: 'HEADER', format: 'TEXT', text: headerText })
-    } else if (headerFormat === 'IMAGE' && headerMediaUrl) {
-      components.push({ type: 'HEADER', format: 'IMAGE', example: { header_handle: [headerMediaUrl] } })
-    } else if (headerFormat === 'VIDEO' && headerMediaUrl) {
-      components.push({ type: 'HEADER', format: 'VIDEO', example: { header_handle: [headerMediaUrl] } })
-    } else if (headerFormat === 'DOCUMENT' && headerMediaUrl) {
-      components.push({ type: 'HEADER', format: 'DOCUMENT', example: { header_handle: [headerMediaUrl] } })
+    } else if (headerFormat === 'IMAGE' && headerMediaHandle) {
+      components.push({ type: 'HEADER', format: 'IMAGE', example: { header_handle: [headerMediaHandle] } })
+    } else if (headerFormat === 'VIDEO' && headerMediaHandle) {
+      components.push({ type: 'HEADER', format: 'VIDEO', example: { header_handle: [headerMediaHandle] } })
+    } else if (headerFormat === 'DOCUMENT' && headerMediaHandle) {
+      components.push({ type: 'HEADER', format: 'DOCUMENT', example: { header_handle: [headerMediaHandle] } })
     }
 
     if (body) {
@@ -137,6 +160,10 @@ export default function EditTemplatePage() {
     setError('')
 
     if (!body) { setError('El cuerpo del mensaje es requerido'); return }
+    if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaHandle) {
+      setError('Sube un archivo de ejemplo para el encabezado')
+      return
+    }
 
     setLoading(true)
     try {
@@ -224,9 +251,17 @@ export default function EditTemplatePage() {
           )}
           {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && (
             <div>
-              <input type="url" value={headerMediaUrl} onChange={e => setHeaderMediaUrl(e.target.value)}
-                className="input-field" placeholder="https://ejemplo.com/imagen.jpg" />
-              <p className="text-xs text-tierra-400 mt-1">URL pública del archivo</p>
+              <input
+                type="file"
+                accept={headerFormat === 'IMAGE' ? 'image/*' : headerFormat === 'VIDEO' ? 'video/*' : 'application/pdf'}
+                onChange={handleHeaderFileChange}
+                className="input-field"
+              />
+              {uploadingMedia && <p className="text-xs text-tierra-400 mt-1">Subiendo archivo a Meta...</p>}
+              {headerMediaHandle && !uploadingMedia && (
+                <p className="text-xs text-verde-700 mt-1">✓ {headerMediaFileName} subido correctamente</p>
+              )}
+              <p className="text-xs text-tierra-400 mt-1">Sube un archivo nuevo para mantener o cambiar el header de media (Meta requiere un ejemplo actualizado en cada edición)</p>
             </div>
           )}
         </div>
@@ -333,7 +368,7 @@ export default function EditTemplatePage() {
         )}
 
         <div className="flex items-center gap-3">
-          <button type="submit" disabled={loading} className="btn-primary">
+          <button type="submit" disabled={loading || uploadingMedia} className="btn-primary">
             {loading ? 'Guardando cambios...' : 'Guardar cambios'}
           </button>
           <button type="button" onClick={() => router.back()} className="btn-secondary">Cancelar</button>

@@ -56,6 +56,38 @@ export async function getWabaNamespace(meta: ClientMeta): Promise<string> {
   return data.message_template_namespace
 }
 
+// Sube un archivo de ejemplo (imagen/video/documento) vía la Resumable Upload API de Meta
+// y devuelve el "handle" que exige `example.header_handle` al crear una plantilla con header de media.
+export async function uploadTemplateMedia(meta: ClientMeta, fileBuffer: Buffer, mimeType: string): Promise<string> {
+  const appId = process.env.NEXT_PUBLIC_META_APP_ID
+  if (!appId) throw new Error('NEXT_PUBLIC_META_APP_ID no está configurado')
+
+  // Paso 1: iniciar la sesión de subida
+  const startUrl = `${GRAPH_API}/${appId}/uploads?file_length=${fileBuffer.length}&file_type=${encodeURIComponent(mimeType)}&access_token=${encodeURIComponent(meta.system_user_token)}`
+  const startRes = await fetch(startUrl, { method: 'POST' })
+  const startData = await startRes.json()
+  if (!startRes.ok || startData.error) throw new Error(startData.error?.message || 'No se pudo iniciar la subida del archivo')
+
+  const sessionId: string = startData.id
+
+  // Paso 2: subir los bytes del archivo a la sesión, que devuelve el handle final
+  const uploadRes = await fetch(`https://graph.facebook.com/${sessionId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `OAuth ${meta.system_user_token}`,
+      file_offset: '0',
+    },
+    body: fileBuffer,
+  })
+  const uploadData = await uploadRes.json()
+  if (!uploadRes.ok || uploadData.error || !uploadData.h) {
+    throw new Error(uploadData.error?.message || 'No se pudo completar la subida del archivo')
+  }
+
+  return uploadData.h
+}
+
+
 export async function findApprovedTemplate(meta: ClientMeta, name: string, language: string) {
   const templates = await listTemplates(meta)
   return templates.find((t: any) => t.name === name && t.language === language) || null

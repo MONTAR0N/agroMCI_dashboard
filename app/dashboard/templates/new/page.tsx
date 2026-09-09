@@ -21,13 +21,37 @@ export default function NewTemplatePage() {
   const [language, setLanguage] = useState('es')
   const [headerFormat, setHeaderFormat] = useState<HeaderFormat>('NONE')
   const [headerText, setHeaderText] = useState('')
-  const [headerMediaUrl, setHeaderMediaUrl] = useState('')
+  const [headerMediaHandle, setHeaderMediaHandle] = useState('')
+  const [headerMediaFileName, setHeaderMediaFileName] = useState('')
+  const [uploadingMedia, setUploadingMedia] = useState(false)
   const [body, setBody] = useState('')
   const [footer, setFooter] = useState('')
   const [buttons, setButtons] = useState<ButtonConfig[]>([])
   const [varExamples, setVarExamples] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  async function handleHeaderFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingMedia(true)
+    setError('')
+    setHeaderMediaHandle('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/templates/upload-media', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setHeaderMediaHandle(data.handle)
+      setHeaderMediaFileName(file.name)
+    } catch (err: any) {
+      setError('Error al subir el archivo: ' + err.message)
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
 
   // Detectar variables del body
   const detectedVars = (body.match(/\{\{(\d+)\}\}/g) || [])
@@ -54,23 +78,23 @@ export default function NewTemplatePage() {
     // Header
     if (headerFormat === 'TEXT' && headerText) {
       components.push({ type: 'HEADER', format: 'TEXT', text: headerText })
-    } else if (headerFormat === 'IMAGE' && headerMediaUrl) {
+    } else if (headerFormat === 'IMAGE' && headerMediaHandle) {
       components.push({
         type: 'HEADER',
         format: 'IMAGE',
-        example: { header_handle: [headerMediaUrl] },
+        example: { header_handle: [headerMediaHandle] },
       })
-    } else if (headerFormat === 'VIDEO' && headerMediaUrl) {
+    } else if (headerFormat === 'VIDEO' && headerMediaHandle) {
       components.push({
         type: 'HEADER',
         format: 'VIDEO',
-        example: { header_handle: [headerMediaUrl] },
+        example: { header_handle: [headerMediaHandle] },
       })
-    } else if (headerFormat === 'DOCUMENT' && headerMediaUrl) {
+    } else if (headerFormat === 'DOCUMENT' && headerMediaHandle) {
       components.push({
         type: 'HEADER',
         format: 'DOCUMENT',
-        example: { header_handle: [headerMediaUrl] },
+        example: { header_handle: [headerMediaHandle] },
       })
     }
 
@@ -111,6 +135,10 @@ export default function NewTemplatePage() {
 
     if (!name) { setError('El nombre es requerido'); return }
     if (!body) { setError('El cuerpo del mensaje es requerido'); return }
+    if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaHandle) {
+      setError('Sube un archivo de ejemplo para el encabezado')
+      return
+    }
 
     setLoading(true)
     try {
@@ -244,13 +272,16 @@ export default function NewTemplatePage() {
           {(headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') && (
             <div>
               <input
-                type="url"
-                value={headerMediaUrl}
-                onChange={e => setHeaderMediaUrl(e.target.value)}
+                type="file"
+                accept={headerFormat === 'IMAGE' ? 'image/*' : headerFormat === 'VIDEO' ? 'video/*' : 'application/pdf'}
+                onChange={handleHeaderFileChange}
                 className="input-field"
-                placeholder="https://ejemplo.com/imagen.jpg"
               />
-              <p className="text-xs text-tierra-400 mt-1">URL pública del archivo (se usa como ejemplo para la revisión de Meta)</p>
+              {uploadingMedia && <p className="text-xs text-tierra-400 mt-1">Subiendo archivo a Meta...</p>}
+              {headerMediaHandle && !uploadingMedia && (
+                <p className="text-xs text-verde-700 mt-1">✓ {headerMediaFileName} subido correctamente</p>
+              )}
+              <p className="text-xs text-tierra-400 mt-1">Se sube directamente a Meta y se usa como ejemplo para la revisión de la plantilla</p>
             </div>
           )}
         </div>
@@ -402,7 +433,7 @@ export default function NewTemplatePage() {
 
         {/* Submit */}
         <div className="flex items-center gap-3">
-          <button type="submit" disabled={loading} className="btn-primary">
+          <button type="submit" disabled={loading || uploadingMedia} className="btn-primary">
             {loading ? 'Enviando a Meta...' : 'Crear plantilla'}
           </button>
           <button type="button" onClick={() => router.back()} className="btn-secondary">
