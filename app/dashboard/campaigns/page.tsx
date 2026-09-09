@@ -31,6 +31,9 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState<number | null>(null)
   const [progress, setProgress] = useState<Record<number, { sent: number; total: number; failed: number }>>({})
+  const [errorsFor, setErrorsFor] = useState<number | null>(null)
+  const [failedMessages, setFailedMessages] = useState<{ id: number; phone: string; error_message: string | null }[]>([])
+  const [loadingErrors, setLoadingErrors] = useState(false)
 
   async function loadCampaigns() {
     setLoading(true)
@@ -82,6 +85,17 @@ export default function CampaignsPage() {
       await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
       setCampaigns(prev => prev.filter(c => c.id !== id))
     } catch { }
+  }
+
+  async function handleShowErrors(id: number) {
+    if (errorsFor === id) { setErrorsFor(null); return }
+    setErrorsFor(id)
+    setLoadingErrors(true)
+    try {
+      const res = await fetch(`/api/campaigns/${id}`)
+      const data = await res.json()
+      if (res.ok) setFailedMessages(data.failedMessages || [])
+    } catch { } finally { setLoadingErrors(false) }
   }
 
   function formatDate(d: string | null) {
@@ -157,7 +171,31 @@ export default function CampaignsPage() {
                       <span className="text-xs text-tierra-500 whitespace-nowrap">
                         {c.sent_count} enviados · {c.failed_count} fallidos · {c.total_contacts} total
                       </span>
+                      {c.failed_count > 0 && (
+                        <button
+                          onClick={() => handleShowErrors(c.id)}
+                          className="text-xs text-red-600 underline whitespace-nowrap"
+                        >
+                          {errorsFor === c.id ? 'Ocultar errores' : 'Ver errores'}
+                        </button>
+                      )}
                     </div>
+
+                    {errorsFor === c.id && (
+                      <div className="mt-3 rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-tierra-700 space-y-1">
+                        {loadingErrors ? (
+                          <p>Cargando...</p>
+                        ) : failedMessages.length === 0 ? (
+                          <p>Sin detalles de error disponibles.</p>
+                        ) : (
+                          failedMessages.map(m => (
+                            <p key={m.id}>
+                              <span className="font-mono">{m.phone}</span>: {m.error_message || 'Sin mensaje de error'}
+                            </p>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">

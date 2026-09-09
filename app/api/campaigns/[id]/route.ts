@@ -24,7 +24,14 @@ export async function GET(
       [params.id]
     )
 
-    return NextResponse.json({ campaign, messageStats: stats })
+    // Detalle de mensajes fallidos, para poder diagnosticar la causa exacta
+    const failedMessages = await query<{ id: number; phone: string; error_message: string | null }>(
+      `SELECT id, phone, error_message FROM campaign_messages
+       WHERE campaign_id = $1 AND status = 'failed' ORDER BY id`,
+      [params.id]
+    )
+
+    return NextResponse.json({ campaign, messageStats: stats, failedMessages })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
