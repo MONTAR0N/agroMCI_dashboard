@@ -11,6 +11,13 @@ interface Template {
     components: any[]
 }
 
+interface Contact {
+    id: number
+    phone: string
+    name: string
+    extra: Record<string, string>
+}
+
 export default function EditCampaignPage({ params }: { params: { id: string } }) {
     const router = useRouter()
 
@@ -18,6 +25,9 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     const [templates, setTemplates] = useState<Template[]>([])
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
     const [variableMapping, setVariableMapping] = useState<Record<string, string>>({})
+    const [contacts, setContacts] = useState<Contact[]>([])
+    const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set())
+    const [contactSearch, setContactSearch] = useState('')
     const [contactFields, setContactFields] = useState<string[]>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -29,7 +39,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                 const [cRes, tRes, contactsRes] = await Promise.all([
                     fetch(`/api/campaigns/${params.id}`),
                     fetch('/api/templates'),
-                    fetch('/api/contacts?limit=1'),
+                    fetch('/api/contacts?limit=10000'),
                 ])
                 const cData = await cRes.json()
                 const tData = await tRes.json()
@@ -50,11 +60,16 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                 setSelectedTemplate(current || null)
                 setVariableMapping(cData.campaign.template_data?.variableMapping || {})
 
-                if (contactsRes.ok && contactsData.contacts?.length > 0) {
-                    const c = contactsData.contacts[0]
-                    const fields = ['name']
-                    if (c.extra) Object.keys(c.extra).forEach((k: string) => fields.push(k))
-                    setContactFields(fields)
+                if (contactsRes.ok) {
+                    setContacts(contactsData.contacts)
+                    // Por defecto se preseleccionan los contactos ya asignados a la campaña
+                    setSelectedContactIds(new Set(cData.contactIds || []))
+                    if (contactsData.contacts?.length > 0) {
+                        const c = contactsData.contacts[0]
+                        const fields = ['name']
+                        if (c.extra) Object.keys(c.extra).forEach((k: string) => fields.push(k))
+                        setContactFields(fields)
+                    }
                 }
             } catch (err: any) {
                 setError(err.message)
@@ -64,6 +79,34 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
         }
         load()
     }, [params.id])
+
+    function toggleContact(id: number) {
+        setSelectedContactIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id); else next.add(id)
+            return next
+        })
+    }
+
+    const visibleContacts = contacts.filter(c =>
+        !contactSearch || c.name?.toLowerCase().includes(contactSearch.toLowerCase()) || c.phone.includes(contactSearch)
+    )
+
+    function selectAllVisible() {
+        setSelectedContactIds(prev => {
+            const next = new Set(prev)
+            visibleContacts.forEach(c => next.add(c.id))
+            return next
+        })
+    }
+
+    function deselectAllVisible() {
+        setSelectedContactIds(prev => {
+            const next = new Set(prev)
+            visibleContacts.forEach(c => next.delete(c.id))
+            return next
+        })
+    }
 
     function getTemplateVars(t: Template): string[] {
         const body = t.components?.find((c: any) => c.type === 'BODY')
@@ -97,6 +140,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     async function handleSave() {
         if (!name) { setError('Nombre de campaña requerido'); return }
         if (!selectedTemplate) { setError('Selecciona una plantilla'); return }
+        if (selectedContactIds.size === 0) { setError('Selecciona al menos un contacto'); return }
 
         setSaving(true)
         setError('')
@@ -109,6 +153,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                     templateName: selectedTemplate.name,
                     templateLang: selectedTemplate.language,
                     variableMapping,
+                    contactIds: [...selectedContactIds],
                 }),
             })
 
@@ -215,6 +260,40 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                 {error && (
                     <div className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-3">{error}</div>
                 )}
+
+                <div className="card space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold text-tierra-700">Contactos ({selectedContactIds.size} de {contacts.length} seleccionados)</h2>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={selectAllVisible} className="text-xs text-verde underline">Seleccionar todos</button>
+                            <button type="button" onClick={deselectAllVisible} className="text-xs text-red-500 underline">Quitar todos</button>
+                        </div>
+                    </div>
+                    <input
+                        type="text"
+                        value={contactSearch}
+                        onChange={e => setContactSearch(e.target.value)}
+                        className="input-field"
+                        placeholder="Buscar por nombre o teléfono..."
+                    />
+                    <div className="max-h-64 overflow-y-auto divide-y divide-paja-100 border border-paja-100 rounded-lg">
+                        {visibleContacts.length === 0 ? (
+                            <p className="text-sm text-tierra-400 p-3">Sin contactos</p>
+                        ) : (
+                            visibleContacts.map(c => (
+                                <label key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-paja-50">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedContactIds.has(c.id)}
+                                        onChange={() => toggleContact(c.id)}
+                                    />
+                                    <span className="font-medium text-tierra-800">{c.name || 'Sin nombre'}</span>
+                                    <span className="font-mono text-tierra-400">{c.phone}</span>
+                                </label>
+                            ))
+                        )}
+                    </div>
+                </div>
 
                 <div className="flex items-center gap-3">
                     <button

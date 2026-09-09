@@ -27,17 +27,22 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-    const { name, templateName, templateLang, variableMapping } = await request.json()
+    const { name, templateName, templateLang, variableMapping, contactIds } = await request.json()
 
     if (!name || !templateName) {
       return NextResponse.json({ error: 'Nombre y plantilla son requeridos' }, { status: 400 })
     }
 
-    // Obtener contactos activos del cliente
-    const contacts = await query<{ id: number; phone: string; name: string; extra: Record<string, string> }>(
-      'SELECT id, phone, name, extra FROM contacts WHERE client_id = $1 AND active = true',
-      [session.clientId]
-    )
+    // Obtener contactos activos del cliente: si viene contactIds se filtra a esos, si no se incluyen todos
+    const contacts = Array.isArray(contactIds) && contactIds.length > 0
+      ? await query<{ id: number; phone: string; name: string; extra: Record<string, string> }>(
+        'SELECT id, phone, name, extra FROM contacts WHERE client_id = $1 AND active = true AND id = ANY($2::int[])',
+        [session.clientId, contactIds]
+      )
+      : await query<{ id: number; phone: string; name: string; extra: Record<string, string> }>(
+        'SELECT id, phone, name, extra FROM contacts WHERE client_id = $1 AND active = true',
+        [session.clientId]
+      )
 
     if (contacts.length === 0) {
       return NextResponse.json({ error: 'No hay contactos para enviar' }, { status: 400 })

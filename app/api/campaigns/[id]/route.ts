@@ -31,7 +31,14 @@ export async function GET(
       [params.id]
     )
 
-    return NextResponse.json({ campaign, messageStats: stats, failedMessages })
+    // Contactos actualmente asignados a la campaña, para poder editarlos
+    const contactRows = await query<{ contact_id: number }>(
+      `SELECT contact_id FROM campaign_messages WHERE campaign_id = $1 AND contact_id IS NOT NULL`,
+      [params.id]
+    )
+    const contactIds = contactRows.map(r => r.contact_id)
+
+    return NextResponse.json({ campaign, messageStats: stats, failedMessages, contactIds })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -54,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'No se puede editar una campaña mientras se está enviando' }, { status: 400 })
     }
 
-    const { name, templateName, templateLang, variableMapping } = await request.json()
+    const { name, templateName, templateLang, variableMapping, contactIds } = await request.json()
     if (!name || !templateName) {
       return NextResponse.json({ error: 'Nombre y plantilla son requeridos' }, { status: 400 })
     }
@@ -65,6 +72,45 @@ export async function PATCH(
        RETURNING id`,
       [name, templateName, templateLang || 'es', JSON.stringify({ variableMapping }), params.id, session.clientId]
     )
+
+    if (Array.isArray(contactIds)) {
+      // Contactos que ya tienen mensaje pendiente en esta campaña
+      const current = await query<{ contact_id: number }>(
+        `SELECT contact_id FROM campaign_messages WHERE campaign_id = $1 AND status = 'pending' AND contact_id IS NOT NULL`,
+        [params.id]
+      )
+      const currentIds = new Set(current.map(r => r.contact_id))
+      const nextIds = new Set(contactIds)
+
+      const toRemove = [...currentIds].filter(id => !nextIds.has(id))
+      const toAdd = [...nextIds].filter(id => !currentIds.has(id))
+
+      if (toRemove.length > 0) {
+        await query(
+          `DELETE FROM campaign_messages WHERE campaign_id = $1 AND status = 'pending' AND contact_id = ANY($2::int[])`,
+          [params.id, toRemove]
+        )
+      }
+
+      if (toAdd.length > 0) {
+        const contactsToAdd = await query<{ id: number; phone: string }>(
+          `SELECT id, phone FROM contacts WHERE client_id = $1 AND active = true AND id = ANY($2::int[])`,
+          [session.clientId, toAdd]
+        )
+        for (const contact of contactsToAdd) {
+          await query(
+            `INSERT INTO campaign_messages (campaign_id, contact_id, phone, status)
+             VALUES ($1, $2, $3, 'pending')`,
+            [params.id, contact.id, contact.phone]
+          )
+        }
+      }
+
+      await query(
+        `UPDATE campaigns SET total_contacts = (SELECT COUNT(*) FROM campaign_messages WHERE campaign_id = $1) WHERE id = $1`,
+        [params.id]
+      )
+    }
 
     return NextResponse.json({ campaign: updated })
   } catch (error: any) {

@@ -11,13 +11,22 @@ interface Template {
   components: any[]
 }
 
+interface Contact {
+  id: number
+  phone: string
+  name: string
+  extra: Record<string, string>
+}
+
 export default function NewCampaignPage() {
   const router = useRouter()
 
   const [name, setName] = useState('')
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
-  const [contactCount, setContactCount] = useState(0)
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set())
+  const [contactSearch, setContactSearch] = useState('')
   const [contactFields, setContactFields] = useState<string[]>([])
   const [variableMapping, setVariableMapping] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -34,12 +43,12 @@ export default function NewCampaignPage() {
           setTemplates((tData.templates || []).filter((t: Template) => t.status === 'APPROVED'))
         }
 
-        // Cargar info de contactos
-        const cRes = await fetch('/api/contacts?limit=1')
+        // Cargar contactos: por defecto se incluyen todos
+        const cRes = await fetch('/api/contacts?limit=10000')
         const cData = await cRes.json()
         if (cRes.ok) {
-          setContactCount(cData.pagination.total)
-          // Extraer campos disponibles del primer contacto
+          setContacts(cData.contacts)
+          setSelectedContactIds(new Set(cData.contacts.map((c: Contact) => c.id)))
           if (cData.contacts.length > 0) {
             const c = cData.contacts[0]
             const fields = ['name']
@@ -49,10 +58,38 @@ export default function NewCampaignPage() {
             setContactFields(fields)
           }
         }
-      } catch {} finally { setLoading(false) }
+      } catch { } finally { setLoading(false) }
     }
     load()
   }, [])
+
+  function toggleContact(id: number) {
+    setSelectedContactIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const visibleContacts = contacts.filter(c =>
+    !contactSearch || c.name?.toLowerCase().includes(contactSearch.toLowerCase()) || c.phone.includes(contactSearch)
+  )
+
+  function selectAllVisible() {
+    setSelectedContactIds(prev => {
+      const next = new Set(prev)
+      visibleContacts.forEach(c => next.add(c.id))
+      return next
+    })
+  }
+
+  function deselectAllVisible() {
+    setSelectedContactIds(prev => {
+      const next = new Set(prev)
+      visibleContacts.forEach(c => next.delete(c.id))
+      return next
+    })
+  }
 
   function getTemplateVars(t: Template): string[] {
     const body = t.components?.find((c: any) => c.type === 'BODY')
@@ -88,7 +125,7 @@ export default function NewCampaignPage() {
   async function handleCreate() {
     if (!name) { setError('Nombre de campaña requerido'); return }
     if (!selectedTemplate) { setError('Selecciona una plantilla'); return }
-    if (contactCount === 0) { setError('No hay contactos'); return }
+    if (selectedContactIds.size === 0) { setError('Selecciona al menos un contacto'); return }
 
     setCreating(true)
     setError('')
@@ -101,6 +138,7 @@ export default function NewCampaignPage() {
           templateName: selectedTemplate.name,
           templateLang: selectedTemplate.language,
           variableMapping,
+          contactIds: [...selectedContactIds],
         }),
       })
 
@@ -135,7 +173,7 @@ export default function NewCampaignPage() {
           Volver
         </button>
         <h1 className="text-2xl font-bold text-tierra-900">Nueva campaña</h1>
-        <p className="text-sm text-tierra-400 mt-1">Se enviará a {contactCount} contacto{contactCount !== 1 ? 's' : ''}</p>
+        <p className="text-sm text-tierra-400 mt-1">Se enviará a {selectedContactIds.size} de {contacts.length} contacto{contacts.length !== 1 ? 's' : ''}</p>
       </div>
 
       <div className="space-y-6">
@@ -213,13 +251,48 @@ export default function NewCampaignPage() {
           </div>
         )}
 
+        {/* Selección de contactos */}
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-tierra-700">Contactos ({selectedContactIds.size} de {contacts.length} seleccionados)</h2>
+            <div className="flex gap-2">
+              <button type="button" onClick={selectAllVisible} className="text-xs text-verde underline">Seleccionar todos</button>
+              <button type="button" onClick={deselectAllVisible} className="text-xs text-red-500 underline">Quitar todos</button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={contactSearch}
+            onChange={e => setContactSearch(e.target.value)}
+            className="input-field"
+            placeholder="Buscar por nombre o teléfono..."
+          />
+          <div className="max-h-64 overflow-y-auto divide-y divide-paja-100 border border-paja-100 rounded-lg">
+            {visibleContacts.length === 0 ? (
+              <p className="text-sm text-tierra-400 p-3">Sin contactos</p>
+            ) : (
+              visibleContacts.map(c => (
+                <label key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-paja-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedContactIds.has(c.id)}
+                    onChange={() => toggleContact(c.id)}
+                  />
+                  <span className="font-medium text-tierra-800">{c.name || 'Sin nombre'}</span>
+                  <span className="font-mono text-tierra-400">{c.phone}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* Resumen */}
         {selectedTemplate && (
           <div className="card bg-verde/5 border-verde/20">
             <h2 className="text-sm font-semibold text-tierra-700 mb-2">Resumen</h2>
             <div className="text-sm text-tierra-600 space-y-1">
               <p>Plantilla: <span className="font-mono font-medium">{selectedTemplate.name}</span></p>
-              <p>Contactos: <span className="font-medium">{contactCount}</span></p>
+              <p>Contactos: <span className="font-medium">{selectedContactIds.size}</span></p>
               <p>Se creará la campaña en estado borrador. Después la envías desde la lista de campañas.</p>
             </div>
           </div>
