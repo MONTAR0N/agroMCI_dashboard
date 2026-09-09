@@ -41,6 +41,16 @@ function toE164(phone: string): string {
     return `+${digits}`
 }
 
+// Chatwoot no siempre responde { error }: en validaciones devuelve { message, errors }
+function extractError(data: any): string {
+    if (!data) return 'Error desconocido de Chatwoot'
+    if (data.error) return data.error
+    if (Array.isArray(data.errors)) return data.errors.map((e: any) => e.message || e).join(', ')
+    if (data.errors) return JSON.stringify(data.errors)
+    if (data.message) return data.message
+    return JSON.stringify(data)
+}
+
 export async function findOrCreateContact(cw: ChatwootClient, phone: string, name?: string) {
     const e164 = toE164(phone)
 
@@ -50,7 +60,7 @@ export async function findOrCreateContact(cw: ChatwootClient, phone: string, nam
     )
     const searchData = await searchRes.json()
     const existing = (searchData.payload || []).find((c: any) => c.phone_number === e164)
-    if (existing) return existing
+    if (existing) return { contact: existing, sourceId: findSourceId(existing, cw.inboxId) }
 
     const createRes = await fetch(`${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts`, {
         method: 'POST',
@@ -58,11 +68,31 @@ export async function findOrCreateContact(cw: ChatwootClient, phone: string, nam
         body: JSON.stringify({ inbox_id: Number(cw.inboxId), name: name || e164, phone_number: e164 }),
     })
     const createData = await createRes.json()
-    if (createData.error) throw new Error(createData.error)
-    return createData.payload.contact
+
+    if (!createRes.ok || createData.error) {
+        // El contacto puede existir ya con un formato de teléfono distinto (duplicado): reintenta la búsqueda antes de fallar
+        const retryRes = await fetch(
+            `${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts/search?q=${encodeURIComponent(e164)}`,
+            { headers: headers(cw) }
+        )
+        const retryData = await retryRes.json()
+        const retryExisting = (retryData.payload || []).find((c: any) => c.phone_number === e164)
+        if (retryExisting) return { contact: retryExisting, sourceId: findSourceId(retryExisting, cw.inboxId) }
+        throw new Error(`No se pudo crear el contacto en Chatwoot: ${extractError(createData)}`)
+    }
+
+    // El source_id real que Chatwoot asigna al contact_inbox no siempre es igual al teléfono en E.164
+    const sourceId: string | undefined = createData.payload.contact_inbox?.source_id
+    return { contact: createData.payload.contact, sourceId: sourceId || e164 }
 }
 
-export async function findOrCreateConversation(cw: ChatwootClient, contactId: number, phone: string) {
+// Busca el source_id del contact_inbox correspondiente a nuestro inbox (puede no ser el teléfono en E.164)
+function findSourceId(contact: any, inboxId: string): string | undefined {
+    const match = (contact.contact_inboxes || []).find((ci: any) => ci.inbox?.id === Number(inboxId))
+    return match?.source_id
+}
+
+export async function findOrCreateConversation(cw: ChatwootClient, contactId: number, sourceId: string) {
     const listRes = await fetch(
         `${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts/${contactId}/conversations`,
         { headers: headers(cw) }
@@ -74,10 +104,10 @@ export async function findOrCreateConversation(cw: ChatwootClient, contactId: nu
     const createRes = await fetch(`${cw.baseUrl}/api/v1/accounts/${cw.accountId}/conversations`, {
         method: 'POST',
         headers: headers(cw),
-        body: JSON.stringify({ source_id: toE164(phone), inbox_id: Number(cw.inboxId), contact_id: contactId }),
+        body: JSON.stringify({ source_id: sourceId, inbox_id: Number(cw.inboxId), contact_id: contactId }),
     })
     const createData = await createRes.json()
-    if (createData.error) throw new Error(createData.error)
+    if (!createRes.ok || createData.error) throw new Error(`No se pudo crear la conversación en Chatwoot: ${extractError(createData)}`)
     return createData.id as number
 }
 
@@ -111,6 +141,6 @@ export async function sendTemplateViaChatwoot(
         }
     )
     const data = await res.json()
-    if (data.error) throw new Error(data.error)
+    if (!res.ok || data.error) throw new Error(`No se pudo enviar el mensaje via Chatwoot: ${extractError(data)}`)
     return data
 }

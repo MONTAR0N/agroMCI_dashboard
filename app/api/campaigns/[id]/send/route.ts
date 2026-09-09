@@ -117,8 +117,8 @@ export async function POST(
 
         let wamid: string | null = null
         if (chatwoot) {
-          const cwContact = await findOrCreateContact(chatwoot, msg.phone, contact?.name)
-          const conversationId = await findOrCreateConversation(chatwoot, cwContact.id, msg.phone)
+          const { contact: cwContact, sourceId } = await findOrCreateContact(chatwoot, msg.phone, contact?.name)
+          const conversationId = await findOrCreateConversation(chatwoot, cwContact.id, sourceId || msg.phone)
           const content = renderTemplateBody(templateComponents, bodyParams)
           await sendTemplateViaChatwoot(
             chatwoot, conversationId, content,
