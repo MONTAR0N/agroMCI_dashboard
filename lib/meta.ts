@@ -77,7 +77,7 @@ export async function uploadTemplateMedia(meta: ClientMeta, fileBuffer: Buffer, 
       Authorization: `OAuth ${meta.system_user_token}`,
       file_offset: '0',
     },
-    body: fileBuffer,
+    body: fileBuffer as BodyInit,
   })
   const uploadData = await uploadRes.json()
   if (!uploadRes.ok || uploadData.error || !uploadData.h) {
