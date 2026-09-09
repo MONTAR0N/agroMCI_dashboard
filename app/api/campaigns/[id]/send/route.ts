@@ -57,15 +57,23 @@ export async function POST(
       )
     }
 
-    // Obtener siguiente lote de mensajes pendientes
+    // Reclamar el siguiente lote de mensajes pendientes de forma atómica (evita que dos requests
+    // concurrentes — doble clic, loops solapados, etc. — tomen los mismos mensajes y los envíen duplicados)
     const pendingMessages = await query<{
       id: number; contact_id: number; phone: string
     }>(
-      `SELECT cm.id, cm.contact_id, cm.phone
-       FROM campaign_messages cm
-       WHERE cm.campaign_id = $1 AND cm.status = 'pending'
-       ORDER BY cm.id
-       LIMIT $2`,
+      `WITH claimed AS (
+         SELECT id FROM campaign_messages
+         WHERE campaign_id = $1 AND status = 'pending'
+         ORDER BY id
+         FOR UPDATE SKIP LOCKED
+         LIMIT $2
+       )
+       UPDATE campaign_messages cm
+       SET status = 'processing'
+       FROM claimed
+       WHERE cm.id = claimed.id
+       RETURNING cm.id, cm.contact_id, cm.phone`,
       [campaign.id, BATCH_SIZE]
     )
 

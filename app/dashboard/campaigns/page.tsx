@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
 interface Campaign {
@@ -34,6 +34,7 @@ export default function CampaignsPage() {
   const [errorsFor, setErrorsFor] = useState<number | null>(null)
   const [failedMessages, setFailedMessages] = useState<{ id: number; phone: string; error_message: string | null }[]>([])
   const [loadingErrors, setLoadingErrors] = useState(false)
+  const sendingRef = useRef<Set<number>>(new Set())
 
   async function loadCampaigns() {
     setLoading(true)
@@ -47,6 +48,9 @@ export default function CampaignsPage() {
   useEffect(() => { loadCampaigns() }, [])
 
   async function handleSend(id: number, relaunch?: 'failed' | 'all') {
+    // Guardia sincrónica: bloquea reintentos inmediatos (doble clic) antes de que el estado se actualice
+    if (sendingRef.current.has(id)) return
+    sendingRef.current.add(id)
     setSending(id)
     let done = false
     let first = true
@@ -76,6 +80,7 @@ export default function CampaignsPage() {
     }
 
     setSending(null)
+    sendingRef.current.delete(id)
     loadCampaigns()
   }
 
