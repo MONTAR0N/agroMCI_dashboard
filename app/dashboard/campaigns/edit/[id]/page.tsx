@@ -27,6 +27,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     const [variableMapping, setVariableMapping] = useState<Record<string, string>>({})
     const [contacts, setContacts] = useState<Contact[]>([])
     const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set())
+    const [lockedContactIds, setLockedContactIds] = useState<Set<number>>(new Set())
     const [contactSearch, setContactSearch] = useState('')
     const [contactFields, setContactFields] = useState<string[]>([])
     const [loading, setLoading] = useState(true)
@@ -64,6 +65,8 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                     setContacts(contactsData.contacts)
                     // Por defecto se preseleccionan los contactos ya asignados a la campaña
                     setSelectedContactIds(new Set(cData.contactIds || []))
+                    // Contactos que ya recibieron/intentaron el mensaje: no se pueden deseleccionar
+                    setLockedContactIds(new Set(cData.lockedContactIds || []))
                     if (contactsData.contacts?.length > 0) {
                         const c = contactsData.contacts[0]
                         const fields = ['name']
@@ -81,6 +84,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     }, [params.id])
 
     function toggleContact(id: number) {
+        if (lockedContactIds.has(id)) return
         setSelectedContactIds(prev => {
             const next = new Set(prev)
             if (next.has(id)) next.delete(id); else next.add(id)
@@ -103,7 +107,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     function deselectAllVisible() {
         setSelectedContactIds(prev => {
             const next = new Set(prev)
-            visibleContacts.forEach(c => next.delete(c.id))
+            visibleContacts.forEach(c => { if (!lockedContactIds.has(c.id)) next.delete(c.id) })
             return next
         })
     }
@@ -280,17 +284,24 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                         {visibleContacts.length === 0 ? (
                             <p className="text-sm text-tierra-400 p-3">Sin contactos</p>
                         ) : (
-                            visibleContacts.map(c => (
-                                <label key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-paja-50">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedContactIds.has(c.id)}
-                                        onChange={() => toggleContact(c.id)}
-                                    />
-                                    <span className="font-medium text-tierra-800">{c.name || 'Sin nombre'}</span>
-                                    <span className="font-mono text-tierra-400">{c.phone}</span>
-                                </label>
-                            ))
+                            visibleContacts.map(c => {
+                                const isLocked = lockedContactIds.has(c.id)
+                                return (
+                                    <label key={c.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${isLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-paja-50'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedContactIds.has(c.id)}
+                                            disabled={isLocked}
+                                            onChange={() => toggleContact(c.id)}
+                                        />
+                                        <span className="font-medium text-tierra-800">{c.name || 'Sin nombre'}</span>
+                                        <span className="font-mono text-tierra-400">{c.phone}</span>
+                                        {isLocked && (
+                                            <span className="ml-auto text-xs text-tierra-400">Ya enviado</span>
+                                        )}
+                                    </label>
+                                )
+                            })
                         )}
                     </div>
                 </div>

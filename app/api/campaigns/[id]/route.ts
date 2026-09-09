@@ -32,13 +32,15 @@ export async function GET(
     )
 
     // Contactos actualmente asignados a la campaña, para poder editarlos
-    const contactRows = await query<{ contact_id: number }>(
-      `SELECT contact_id FROM campaign_messages WHERE campaign_id = $1 AND contact_id IS NOT NULL`,
+    const contactRows = await query<{ contact_id: number; status: string }>(
+      `SELECT contact_id, status FROM campaign_messages WHERE campaign_id = $1 AND contact_id IS NOT NULL`,
       [params.id]
     )
     const contactIds = contactRows.map(r => r.contact_id)
+    // Contactos que ya recibieron/intentaron el mensaje: no se pueden quitar de la campaña
+    const lockedContactIds = contactRows.filter(r => r.status !== 'pending').map(r => r.contact_id)
 
-    return NextResponse.json({ campaign, messageStats: stats, failedMessages, contactIds })
+    return NextResponse.json({ campaign, messageStats: stats, failedMessages, contactIds, lockedContactIds })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -74,15 +76,18 @@ export async function PATCH(
     )
 
     if (Array.isArray(contactIds)) {
-      // Contactos que ya tienen mensaje pendiente en esta campaña
-      const current = await query<{ contact_id: number }>(
-        `SELECT contact_id FROM campaign_messages WHERE campaign_id = $1 AND status = 'pending' AND contact_id IS NOT NULL`,
+      // Contactos ya asociados a esta campaña, en cualquier estado (para no reinsertar y duplicar envíos)
+      const current = await query<{ contact_id: number; status: string }>(
+        `SELECT contact_id, status FROM campaign_messages WHERE campaign_id = $1 AND contact_id IS NOT NULL`,
         [params.id]
       )
       const currentIds = new Set(current.map(r => r.contact_id))
+      const pendingIds = new Set(current.filter(r => r.status === 'pending').map(r => r.contact_id))
       const nextIds = new Set(contactIds)
 
-      const toRemove = [...currentIds].filter(id => !nextIds.has(id))
+      // Solo se pueden quitar contactos que aún no han recibido/intentado el mensaje
+      const toRemove = [...pendingIds].filter(id => !nextIds.has(id))
+      // Solo se agregan contactos que no estaban ya en la campaña (en ningún estado), para no duplicar envíos
       const toAdd = [...nextIds].filter(id => !currentIds.has(id))
 
       if (toRemove.length > 0) {
