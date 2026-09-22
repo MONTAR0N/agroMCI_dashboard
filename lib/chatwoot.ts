@@ -144,3 +144,19 @@ export async function sendTemplateViaChatwoot(
     if (!res.ok || data.error) throw new Error(`No se pudo enviar el mensaje via Chatwoot: ${extractError(data)}`)
     return data
 }
+
+// Guarda el texto de la plantilla enviada como atributo personalizado del contacto (attribute_key: texto_plantilla)
+export async function setContactCustomAttribute(
+    cw: ChatwootClient,
+    contactId: number,
+    attributes: Record<string, string>
+) {
+    const res = await fetch(`${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: headers(cw),
+        body: JSON.stringify({ custom_attributes: attributes }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) throw new Error(`No se pudo guardar el custom_attribute del contacto en Chatwoot: ${extractError(data)}`)
+    return data
+}

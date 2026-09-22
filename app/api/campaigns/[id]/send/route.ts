@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getClientMeta, sendTemplateMessage, findApprovedTemplate, getWabaNamespace, renderTemplateBody } from '@/lib/meta'
-import { getClientChatwoot, findOrCreateContact, findOrCreateConversation, sendTemplateViaChatwoot } from '@/lib/chatwoot'
+import { getClientChatwoot, findOrCreateContact, findOrCreateConversation, sendTemplateViaChatwoot, setContactCustomAttribute } from '@/lib/chatwoot'
 
 const BATCH_SIZE = 10
 
@@ -132,6 +132,7 @@ export async function POST(
             chatwoot, conversationId, content,
             campaign.template_name, namespace, campaign.template_lang, bodyParams
           )
+          await setContactCustomAttribute(chatwoot, cwContact.id, { texto_plantilla: content })
         } else {
           const result = await sendTemplateMessage(
             meta,
