@@ -63,7 +63,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'No se puede editar una campaña mientras se está enviando' }, { status: 400 })
     }
 
-    const { name, templateName, templateLang, variableMapping, contactIds } = await request.json()
+    const { name, templateName, templateLang, variableMapping, headerMediaUrl, contactIds } = await request.json()
     if (!name || !templateName) {
       return NextResponse.json({ error: 'Nombre y plantilla son requeridos' }, { status: 400 })
     }
@@ -72,7 +72,7 @@ export async function PATCH(
       `UPDATE campaigns SET name = $1, template_name = $2, template_lang = $3, template_data = $4
        WHERE id = $5 AND client_id = $6
        RETURNING id`,
-      [name, templateName, templateLang || 'es', JSON.stringify({ variableMapping }), params.id, session.clientId]
+      [name, templateName, templateLang || 'es', JSON.stringify({ variableMapping, headerMediaUrl }), params.id, session.clientId]
     )
 
     if (Array.isArray(contactIds)) {

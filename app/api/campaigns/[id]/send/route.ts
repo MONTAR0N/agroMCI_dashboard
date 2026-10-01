@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
-import { getClientMeta, sendTemplateMessage, findApprovedTemplate, getWabaNamespace, renderTemplateBody } from '@/lib/meta'
+import { getClientMeta, sendTemplateMessage, findApprovedTemplate, getWabaNamespace, renderTemplateBody, getTemplateHeaderFormat, HeaderMedia } from '@/lib/meta'
 import { getClientChatwoot, findOrCreateContact, findOrCreateConversation, sendTemplateViaChatwoot, setContactCustomAttribute } from '@/lib/chatwoot'
 
 const BATCH_SIZE = 10
@@ -26,7 +26,7 @@ export async function POST(
     // Obtener campaña
     const campaign = await queryOne<{
       id: number; template_name: string; template_lang: string;
-      template_data: { variableMapping?: Record<string, string> };
+      template_data: { variableMapping?: Record<string, string>; headerMediaUrl?: string };
       status: string; total_contacts: number
     }>(
       'SELECT * FROM campaigns WHERE id = $1 AND client_id = $2',
@@ -89,16 +89,22 @@ export async function POST(
     }
 
     const variableMapping = campaign.template_data?.variableMapping || {}
+    const headerMediaUrl = campaign.template_data?.headerMediaUrl
     let batchSent = 0
     let batchFailed = 0
 
+    // Se busca la plantilla siempre para saber si exige un header de media (imagen/video/documento)
+    const template = await findApprovedTemplate(meta, campaign.template_name, campaign.template_lang)
+    const templateComponents: any[] = template?.components || []
+    const headerFormat = getTemplateHeaderFormat(templateComponents)
+    const headerMedia: HeaderMedia | undefined = headerFormat && headerMediaUrl
+      ? { format: headerFormat, url: headerMediaUrl }
+      : undefined
+
     // Si el cliente tiene Chatwoot configurado, se envía por ahí para que quede la conversación registrada
     const chatwoot = await getClientChatwoot(session.clientId)
-    let templateComponents: any[] = []
     let namespace = ''
     if (chatwoot) {
-      const template = await findApprovedTemplate(meta, campaign.template_name, campaign.template_lang)
-      templateComponents = template?.components || []
       namespace = await getWabaNamespace(meta)
     }
 
@@ -130,7 +136,7 @@ export async function POST(
           const content = renderTemplateBody(templateComponents, bodyParams)
           await sendTemplateViaChatwoot(
             chatwoot, conversationId, content,
-            campaign.template_name, namespace, campaign.template_lang, bodyParams
+            campaign.template_name, namespace, campaign.template_lang, bodyParams, headerMedia
           )
           await setContactCustomAttribute(chatwoot, cwContact.id, { texto_plantilla: content })
         } else {
@@ -139,7 +145,9 @@ export async function POST(
             msg.phone,
             campaign.template_name,
             campaign.template_lang,
-            bodyParams.length > 0 ? bodyParams : undefined
+            bodyParams.length > 0 ? bodyParams : undefined,
+            undefined,
+            headerMedia
           )
           wamid = result?.messages?.[0]?.id || null
         }

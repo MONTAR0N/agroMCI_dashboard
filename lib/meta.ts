@@ -93,6 +93,13 @@ export async function findApprovedTemplate(meta: ClientMeta, name: string, langu
   return templates.find((t: any) => t.name === name && t.language === language) || null
 }
 
+// Si la plantilla exige un header de media (imagen/video/documento), devuelve su formato
+export function getTemplateHeaderFormat(components: any[]): 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null {
+  const header = components?.find((c: any) => c.type === 'HEADER')
+  if (header && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(header.format)) return header.format
+  return null
+}
+
 // Reconstruye el texto final del body reemplazando {{n}} por los valores, para mostrarlo como "content" en Chatwoot
 export function renderTemplateBody(components: any[], bodyParams: string[]): string {
   const body = components?.find((c: any) => c.type === 'BODY')
@@ -166,17 +173,29 @@ export async function deleteTemplate(meta: ClientMeta, name: string) {
 
 // ─── Mensajes ───
 
+export interface HeaderMedia {
+  format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  url: string
+}
+
 export async function sendTemplateMessage(
   meta: ClientMeta,
   to: string,
   templateName: string,
   languageCode: string,
   bodyParams?: string[],
-  headerParams?: string[]
+  headerParams?: string[],
+  headerMedia?: HeaderMedia
 ) {
   const components: any[] = []
 
-  if (headerParams && headerParams.length > 0) {
+  if (headerMedia) {
+    const mediaType = headerMedia.format.toLowerCase() as 'image' | 'video' | 'document'
+    components.push({
+      type: 'header',
+      parameters: [{ type: mediaType, [mediaType]: { link: headerMedia.url } }],
+    })
+  } else if (headerParams && headerParams.length > 0) {
     components.push({
       type: 'header',
       parameters: headerParams.map(p => ({ type: 'text', text: p })),

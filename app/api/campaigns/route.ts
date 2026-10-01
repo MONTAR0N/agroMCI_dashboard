@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-    const { name, templateName, templateLang, variableMapping, contactIds } = await request.json()
+    const { name, templateName, templateLang, variableMapping, headerMediaUrl, contactIds } = await request.json()
 
     if (!name || !templateName) {
       return NextResponse.json({ error: 'Nombre y plantilla son requeridos' }, { status: 400 })
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       `INSERT INTO campaigns (client_id, name, template_name, template_lang, template_data, total_contacts, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'draft')
        RETURNING id`,
-      [session.clientId, name, templateName, templateLang || 'es', JSON.stringify({ variableMapping }), contacts.length]
+      [session.clientId, name, templateName, templateLang || 'es', JSON.stringify({ variableMapping, headerMediaUrl }), contacts.length]
     )
 
     if (!campaign) throw new Error('Error al crear campaña')

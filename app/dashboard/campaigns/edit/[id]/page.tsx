@@ -25,6 +25,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     const [templates, setTemplates] = useState<Template[]>([])
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
     const [variableMapping, setVariableMapping] = useState<Record<string, string>>({})
+    const [headerMediaUrl, setHeaderMediaUrl] = useState('')
     const [contacts, setContacts] = useState<Contact[]>([])
     const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set())
     const [sentContactIds, setSentContactIds] = useState<Set<number>>(new Set())
@@ -60,6 +61,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                 )
                 setSelectedTemplate(current || null)
                 setVariableMapping(cData.campaign.template_data?.variableMapping || {})
+                setHeaderMediaUrl(cData.campaign.template_data?.headerMediaUrl || '')
 
                 if (contactsRes.ok) {
                     setContacts(contactsData.contacts)
@@ -121,10 +123,18 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
             .sort((a: string, b: string) => Number(a) - Number(b))
     }
 
+    // Si la plantilla exige un header de imagen/video/documento, el envío necesita una URL pública para ese archivo
+    function getTemplateHeaderFormat(t: Template): 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null {
+        const header = t.components?.find((c: any) => c.type === 'HEADER')
+        if (header && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(header.format)) return header.format
+        return null
+    }
+
     function handleSelectTemplate(name: string) {
         const t = templates.find(t => t.name === name)
         setSelectedTemplate(t || null)
         setVariableMapping({})
+        setHeaderMediaUrl('')
     }
 
     function getBodyPreview(): string {
@@ -144,6 +154,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
         if (!name) { setError('Nombre de campaña requerido'); return }
         if (!selectedTemplate) { setError('Selecciona una plantilla'); return }
         if (selectedContactIds.size === 0) { setError('Selecciona al menos un contacto'); return }
+        if (headerFormat && !headerMediaUrl) { setError('Esta plantilla requiere una URL pública del archivo de encabezado'); return }
 
         setSaving(true)
         setError('')
@@ -156,6 +167,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                     templateName: selectedTemplate.name,
                     templateLang: selectedTemplate.language,
                     variableMapping,
+                    headerMediaUrl: headerFormat ? headerMediaUrl : undefined,
                     contactIds: [...selectedContactIds],
                 }),
             })
@@ -180,6 +192,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     }
 
     const templateVars = selectedTemplate ? getTemplateVars(selectedTemplate) : []
+    const headerFormat = selectedTemplate ? getTemplateHeaderFormat(selectedTemplate) : null
 
     return (
         <div className="max-w-2xl">
@@ -226,6 +239,20 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
                         <div className="bg-paja-50 rounded-lg p-4">
                             <div className="text-xs text-tierra-400 mb-2">Vista previa del mensaje</div>
                             <div className="text-sm text-tierra-800 whitespace-pre-wrap">{getBodyPreview()}</div>
+                        </div>
+                    )}
+
+                    {headerFormat && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-tierra-700">URL pública de la imagen/archivo del encabezado ({headerFormat})</label>
+                            <input
+                                type="url"
+                                value={headerMediaUrl}
+                                onChange={e => setHeaderMediaUrl(e.target.value)}
+                                className="input-field"
+                                placeholder="https://..."
+                            />
+                            <p className="text-xs text-tierra-400">Esta plantilla exige un encabezado de {headerFormat.toLowerCase()}: debe ser una URL pública accesible por WhatsApp.</p>
                         </div>
                     )}
                 </div>

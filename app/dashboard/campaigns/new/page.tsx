@@ -29,6 +29,7 @@ export default function NewCampaignPage() {
   const [contactSearch, setContactSearch] = useState('')
   const [contactFields, setContactFields] = useState<string[]>([])
   const [variableMapping, setVariableMapping] = useState<Record<string, string>>({})
+  const [headerMediaUrl, setHeaderMediaUrl] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
@@ -101,10 +102,18 @@ export default function NewCampaignPage() {
       .sort((a: string, b: string) => Number(a) - Number(b))
   }
 
+  // Si la plantilla exige un header de imagen/video/documento, el envío necesita una URL pública para ese archivo
+  function getTemplateHeaderFormat(t: Template): 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null {
+    const header = t.components?.find((c: any) => c.type === 'HEADER')
+    if (header && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(header.format)) return header.format
+    return null
+  }
+
   function handleSelectTemplate(name: string) {
     const t = templates.find(t => t.name === name)
     setSelectedTemplate(t || null)
     setVariableMapping({})
+    setHeaderMediaUrl('')
   }
 
   function getBodyPreview(): string {
@@ -126,6 +135,8 @@ export default function NewCampaignPage() {
     if (!name) { setError('Nombre de campaña requerido'); return }
     if (!selectedTemplate) { setError('Selecciona una plantilla'); return }
     if (selectedContactIds.size === 0) { setError('Selecciona al menos un contacto'); return }
+    const headerFormat = getTemplateHeaderFormat(selectedTemplate)
+    if (headerFormat && !headerMediaUrl) { setError('Esta plantilla requiere una URL pública del archivo de encabezado'); return }
 
     setCreating(true)
     setError('')
@@ -138,6 +149,7 @@ export default function NewCampaignPage() {
           templateName: selectedTemplate.name,
           templateLang: selectedTemplate.language,
           variableMapping,
+          headerMediaUrl: headerFormat ? headerMediaUrl : undefined,
           contactIds: [...selectedContactIds],
         }),
       })
@@ -162,6 +174,7 @@ export default function NewCampaignPage() {
   }
 
   const templateVars = selectedTemplate ? getTemplateVars(selectedTemplate) : []
+  const headerFormat = selectedTemplate ? getTemplateHeaderFormat(selectedTemplate) : null
 
   return (
     <div className="max-w-2xl">
@@ -212,6 +225,20 @@ export default function NewCampaignPage() {
             <div className="bg-paja-50 rounded-lg p-4">
               <div className="text-xs text-tierra-400 mb-2">Vista previa del mensaje</div>
               <div className="text-sm text-tierra-800 whitespace-pre-wrap">{getBodyPreview()}</div>
+            </div>
+          )}
+
+          {headerFormat && (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-tierra-700">URL pública de la imagen/archivo del encabezado ({headerFormat})</label>
+              <input
+                type="url"
+                value={headerMediaUrl}
+                onChange={e => setHeaderMediaUrl(e.target.value)}
+                className="input-field"
+                placeholder="https://..."
+              />
+              <p className="text-xs text-tierra-400">Esta plantilla exige un encabezado de {headerFormat.toLowerCase()}: debe ser una URL pública accesible por WhatsApp.</p>
             </div>
           )}
         </div>

@@ -118,10 +118,16 @@ export async function sendTemplateViaChatwoot(
     templateName: string,
     namespace: string,
     language: string,
-    bodyParams: string[]
+    bodyParams: string[],
+    headerMedia?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; url: string }
 ) {
-    const processedParams: Record<string, string> = {}
+    const processedParams: Record<string, any> = {}
     bodyParams.forEach((p, i) => { processedParams[String(i + 1)] = p })
+
+    // Chatwoot espera el header de media como processed_params.header (media_url/media_type), separado del body
+    if (headerMedia) {
+        processedParams.header = { media_url: headerMedia.url, media_type: headerMedia.format.toLowerCase() }
+    }
 
     const res = await fetch(
         `${cw.baseUrl}/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/messages`,
