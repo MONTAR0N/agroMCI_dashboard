@@ -121,13 +121,16 @@ export async function sendTemplateViaChatwoot(
     bodyParams: string[],
     headerMedia?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; url: string }
 ) {
-    const processedParams: Record<string, any> = {}
-    bodyParams.forEach((p, i) => { processedParams[String(i + 1)] = p })
+    const bodyMap: Record<string, string> = {}
+    bodyParams.forEach((p, i) => { bodyMap[String(i + 1)] = p })
 
-    // Chatwoot espera el header de media como processed_params.header (media_url/media_type), separado del body
-    if (headerMedia) {
-        processedParams.header = { media_url: headerMedia.url, media_type: headerMedia.format.toLowerCase() }
-    }
+    // Con la clave `header`, Chatwoot exige el formato por componentes: el body debe ir bajo `body`, no plano
+    const processedParams: Record<string, any> = headerMedia
+        ? {
+            ...(bodyParams.length > 0 && { body: bodyMap }),
+            header: { media_url: headerMedia.url, media_type: headerMedia.format.toLowerCase() },
+        }
+        : bodyMap
 
     const res = await fetch(
         `${cw.baseUrl}/api/v1/accounts/${cw.accountId}/conversations/${conversationId}/messages`,
