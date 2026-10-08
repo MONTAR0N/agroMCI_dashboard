@@ -60,7 +60,7 @@ export async function findOrCreateContact(cw: ChatwootClient, phone: string, nam
     )
     const searchData = await searchRes.json()
     const existing = (searchData.payload || []).find((c: any) => c.phone_number === e164)
-    if (existing) return { contact: existing, sourceId: findSourceId(existing, cw.inboxId) }
+    if (existing) return { contact: existing, sourceId: await ensureSourceId(cw, existing) }
 
     const createRes = await fetch(`${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts`, {
         method: 'POST',
@@ -77,7 +77,7 @@ export async function findOrCreateContact(cw: ChatwootClient, phone: string, nam
         )
         const retryData = await retryRes.json()
         const retryExisting = (retryData.payload || []).find((c: any) => c.phone_number === e164)
-        if (retryExisting) return { contact: retryExisting, sourceId: findSourceId(retryExisting, cw.inboxId) }
+        if (retryExisting) return { contact: retryExisting, sourceId: await ensureSourceId(cw, retryExisting) }
         throw new Error(`No se pudo crear el contacto en Chatwoot: ${extractError(createData)}`)
     }
 
@@ -90,6 +90,21 @@ export async function findOrCreateContact(cw: ChatwootClient, phone: string, nam
 function findSourceId(contact: any, inboxId: string): string | undefined {
     const match = (contact.contact_inboxes || []).find((ci: any) => ci.inbox?.id === Number(inboxId))
     return match?.source_id
+}
+
+// Un contacto creado en otro inbox no tiene contact_inbox en el inbox actual: sin él, crear la conversación da 404
+async function ensureSourceId(cw: ChatwootClient, contact: any): Promise<string | undefined> {
+    const found = findSourceId(contact, cw.inboxId)
+    if (found) return found
+
+    const res = await fetch(`${cw.baseUrl}/api/v1/accounts/${cw.accountId}/contacts/${contact.id}/contact_inboxes`, {
+        method: 'POST',
+        headers: headers(cw),
+        body: JSON.stringify({ inbox_id: Number(cw.inboxId) }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) throw new Error(`No se pudo vincular el contacto al inbox en Chatwoot: ${extractError(data)}`)
+    return data.source_id
 }
 
 export async function findOrCreateConversation(cw: ChatwootClient, contactId: number, sourceId: string) {
